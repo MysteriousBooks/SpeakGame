@@ -1,0 +1,9 @@
+# 户部尚书（开局内阁，财政立场）
+name: 户部尚书
+agent_id: minister_finance
+title: 户部尚书
+personality: 循吏、务实、谨慎
+faction: 中立
+skills: [财政, 政务, 田赋]
+loyalty: 70
+born_year: 1580

@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "required": ["narrative", "delta", "new_events", "factual_notes", "audience_queue"],
+  "properties": {
+    "narrative": {"type": "string"},
+    "delta": {
+      "type": "object",
+      "description": "数值变更（键值对，键来自 bounds 配置，值为整数变更量）",
+      "additionalProperties": {"type": "number"}
+    },
+    "new_events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "trigger_condition"],
+        "properties": {
+          "type": {"type": "string"},
+          "province": {"type": "string"},
+          "trigger_condition": {"type": "string"},
+          "resolve_conditions": {"type": "object"}
+        }
+      }
+    },
+    "factual_notes": {"type": "array", "items": {"type": "string"}},
+    "audience_queue": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "agent_id": {"type": "string"},
+          "topic": {"type": "string"},
+          "urgency": {"type": "string", "enum": ["high", "normal", "low"]}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,62 @@
+# 游戏配置
+game:
+  era_name: "崇祯"
+  start_year: 1            # 崇祯元年开局（1628，天启七年八月继位，次年正月改元）
+  start_month: 1
+  turn_length: month       # week | half_month | month
+  difficulty: normal       # easy | normal | hard（全局，控制招募/殿试等信息可见性）
+  average_lifespan: 50     # 自然死亡平均寿命（岁）
+  exam_cycle_years: 3      # 科举周期（明制3，可改1）
+
+# LLM 模型配置（双模型策略：编排/史官用强模型，角色agent用低成本模型）
+llm:
+  default_provider: mock   # mock=无Key测试；开发期可改 deepseek/claude
+  orchestrator:             # 编排agent
+    provider: claude
+    model: claude-opus-4-8
+  historian:                # 史官agent
+    provider: claude
+    model: claude-opus-4-8
+  role_agent:               # 角色agent（户部尚书/百姓等）
+    provider: deepseek
+    model: deepseek-chat
+  mock:
+    provider: mock
+    model: mock
+
+# 数值边界（delta 代码校验用，防止长局数值崩）
+bounds:
+  国库: {min: 0, max: 10000000, max_delta: 500000}
+  内帑: {min: 0, max: 10000000, max_delta: 1000000}
+  民心: {min: 0, max: 100, max_delta: 30}
+  军力: {min: 0, max: 100, max_delta: 20}
+  军心: {min: 0, max: 100, max_delta: 25}
+  朝堂清洗度: {min: 0, max: 100, max_delta: 40}
+  宗室不满: {min: 0, max: 100, max_delta: 30}
+  陕西_民心: {min: 0, max: 100, max_delta: 30}
+  京畿_民心: {min: 0, max: 100, max_delta: 30}
+  陕西_人口: {min: 0, max: 10000000, max_delta: 500000}
+
+# 回合
+turn:
+  max_retries: 3            # 史官 delta 校验失败重试次数
+
+# 开局财政（见金钱/财政系统）
+finance_initial:
+  treasury: 1000000
+  inner_purse: 5000000
+  income_monthly:
+    田赋: 220000
+    商税: 40000
+    辽饷加派: 90000
+    其他: 10000
+  expense_monthly:
+    辽东军饷: 150000
+    边镇京营: 80000
+    宗室岁禄: 90000
+    官俸: 25000
+    其他: 15000
+  tax_rates:
+    田赋率: 0.05
+    辽饷加派率: 0.03
+    商税率: 0.02

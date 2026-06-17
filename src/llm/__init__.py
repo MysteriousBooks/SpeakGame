@@ -1,0 +1,1 @@
+"""LLM 接入层：多模型抽象（DeepSeek/Qwen/Claude/Mock）。"""

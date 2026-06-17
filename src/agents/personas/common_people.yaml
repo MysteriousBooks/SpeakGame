@@ -1,0 +1,9 @@
+# 百姓 agent（承载年景/民力/民心）
+name: 百姓
+agent_id: common_people
+title: 百姓
+personality: 朴实、求安稳、畏官
+faction: 无
+skills: [农事, 民情]
+loyalty: 50
+born_year: 1590
