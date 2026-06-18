@@ -24,6 +24,29 @@ _ABILITIES = ["经世", "文章", "兵略", "理刑", "钱谷", "水利", "辞�
 _PROVINCES = ["顺天", "应天", "山东", "山西", "河南", "陕西", "浙江", "江西", "湖广", "福建", "四川"]
 _BACKGROUNDS = ["寒门苦读", "耕读世家", "落第再试", "边地寒微", "官学廪生", "乡绅子弟"]
 
+# 可授官职（按名次分组）
+# 前三甲固定职位
+POSITIONS_TOP3 = {
+    1: [{"id": "xiuzhuan", "name": "翰林院修撰", "rank_min": 1, "rank_max": 1, "desc": "正六品，掌修国史"}],
+    2: [{"id": "bianxiu", "name": "翰林院编修", "rank_min": 2, "rank_max": 3, "desc": "正七品，掌修国史"}],
+    3: [{"id": "bianxiu", "name": "翰林院编修", "rank_min": 2, "rank_max": 3, "desc": "正七品，掌修国史"}],
+}
+# 二甲及以后可选职位
+POSITIONS_ERJIA = [
+    {"id": "shujishi", "name": "翰林院庶吉士", "desc": "储才学习，三年后授官", "skill_bonus": ["文章", "辞章"]},
+    {"id": "jishizhong", "name": "六科给事中", "desc": "监察六部，可封驳诏书", "skill_bonus": ["经世", "理刑"]},
+    {"id": "yushi", "name": "监察御史", "desc": "巡按地方，纠劾百官", "skill_bonus": ["理刑", "经世"]},
+    {"id": "zhushi", "name": "六部主事", "desc": "各部实务，掌文书案牍", "skill_bonus": ["钱谷", "水利"]},
+    {"id": "zhixian", "name": "知县", "desc": "外放一县，掌民政赋税", "skill_bonus": ["经世", "钱谷"]},
+    {"id": "tuiguan", "name": "推官", "desc": "府级司法，掌刑名狱讼", "skill_bonus": ["理刑"]},
+]
+
+def get_positions_for_rank(rank: int) -> list[dict]:
+    """根据殿试名次返回可授官职列表。"""
+    if rank in POSITIONS_TOP3:
+        return POSITIONS_TOP3[rank]
+    return POSITIONS_ERJIA
+
 # 答卷风格与性格倾向映射
 _ANSWER_STYLE_TO_PERSONALITY = {
     "刚直": "刚直敢谏，不避权贵",
@@ -114,6 +137,7 @@ def generate_jinshi_persona(
     rank: int,
     config: dict,
     chongzhen_year: int,
+    position: dict | None = None,
 ) -> PersonaCard:
     """授官：基于籍贯/答卷风格生成进士人格卡，成为新 agent。
 
@@ -132,6 +156,7 @@ def generate_jinshi_persona(
         skills.append("理财")
     if candidate.ability_tendency == "兵略":
         skills.append("军事")
+    pos_name = position["name"] if position else rank_label
     return PersonaCard(
         id=f"jinshi_{candidate.id}",
         name=candidate.name,
@@ -144,7 +169,7 @@ def generate_jinshi_persona(
         born_year=born_year,
         historical_death_year=historical_death_year,
         death_cause={"type": "natural", "desc": "自然病亡"},
-        recruitment_condition=f"崇祯{chongzhen_year}年殿试{rank_label}，授官",
+        recruitment_condition=f"崇祯{chongzhen_year}年殿试{rank_label}，授{pos_name}",
     )
 
 
@@ -210,3 +235,32 @@ class ExamSystem:
             agent = roster.add_fictional(persona, llm, era)
             new_agents.append(agent)
         return new_agents
+
+    def appoint_one(
+        self,
+        candidate_id: str,
+        position_id: str,
+        gongshi: list[Candidate],
+        rankings: dict[str, int],
+        roster: Roster,
+        llm: LLMProvider,
+        year: int,
+        era: str,
+    ) -> tuple:
+        """单人授官：为一个贡士选择职位并授官。返回 (agent, position_name)。
+
+        candidate_id: 贡士 id
+        position_id: 职位 id（前三甲固定，二甲可选）
+        rankings: {candidate_id: rank} 名次映射
+        """
+        candidate = next((c for c in gongshi if c.id == candidate_id), None)
+        if candidate is None:
+            raise KeyError(f"贡士 {candidate_id} 不存在")
+        rank = rankings.get(candidate_id, len(rankings) + 1)
+        positions = get_positions_for_rank(rank)
+        position = next((p for p in positions if p["id"] == position_id), None)
+        if position is None:
+            raise ValueError(f"职位 {position_id} 不适用于名次 {rank}")
+        persona = generate_jinshi_persona(candidate, rank, self.config, year, position)
+        agent = roster.add_fictional(persona, llm, era)
+        return agent, position["name"]

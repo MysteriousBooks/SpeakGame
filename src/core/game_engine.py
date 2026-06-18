@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from src.agents.base_agent import load_persona
-from src.core.audience import AudienceQueue
+from src.core.audience import AudienceQueue, AudienceRequest
 from src.core.court_session import CourtSession
 from src.core.historian import Historian, TurnResult
 from src.core.tasks import TaskSystem
@@ -44,6 +44,7 @@ class TurnSummary:
     premonitions: list[dict] = field(default_factory=list)
     task: dict | None = None
     execution_public: list[dict] = field(default_factory=dict)  # [{agent_id, name, public}]
+    court_speeches: list[dict] = field(default_factory=list)    # 早朝发言 [{speaker_id, speaker_name, public}]
 
 
 class GameEngine:
@@ -157,12 +158,78 @@ class GameEngine:
         speaking = self.roster.active_agents()
         return await court.run(speaking, situation or self.situation_text(), self.audience)
 
-    # ---------- 一回合 ----------
+    # ---------- 实时早朝（分轮执行） ----------
+    async def start_court_phase(self) -> list[dict]:
+        """启动早朝第1轮，返回发言列表。"""
+        max_turns = int(self.config.get("game", {}).get("court_turns", 3))
+        self._court_session = CourtSession(max_turns=max_turns)
+        self._court_session.start()
+        speaking = self.roster.active_agents()
+        round_speeches = await self._court_session.run_one_round(
+            speaking, self.situation_text()
+        )
+        return [s.to_dict() for s in round_speeches]
+
+    async def interject_court(self, message: str) -> tuple[list[dict], bool]:
+        """玩家插话后执行下一轮早朝。返回 (本轮发言, 早朝是否仍活跃)。"""
+        if not hasattr(self, "_court_session") or not self._court_session.is_active:
+            return [], False
+        speaking = self.roster.active_agents()
+        round_speeches = await self._court_session.run_one_round(
+            speaking, self.situation_text(), player_message=message
+        )
+        return [s.to_dict() for s in round_speeches], self._court_session.is_active
+
+    def get_court_session_active(self) -> bool:
+        """检查当前是否有进行中的早朝。"""
+        return hasattr(self, "_court_session") and self._court_session.is_active
+
+    def get_all_court_speeches(self) -> list[dict]:
+        """获取早朝全部发言（用于落库）。"""
+        if hasattr(self, "_court_session"):
+            return [s.to_dict() for s in self._court_session.speeches]
+        return []
+
+    def _collect_court_audience_requests(self) -> None:
+        """从早朝发言中收集求见请求，加入 audience_queue。"""
+        if not hasattr(self, "_court_session"):
+            return
+        for s in self._court_session.speeches:
+            if s.want_audience and s.audience_topic and s.speaker_id != "emperor":
+                self.audience.add(AudienceRequest(
+                    agent_id=s.speaker_id,
+                    agent_name=s.speaker_name,
+                    topic=s.audience_topic,
+                    urgency="normal",
+                ))
+
+    # ---------- 一回合（完整流程，兼容旧接口） ----------
     async def run_turn(self, edict: str, *, audience_decisions: dict | None = None) -> TurnSummary:
-        """执行一回合：下诏 → 编排 → 执行 → 史官推演 → 落库 → 事件 → 时间推进。"""
+        """执行一回合：早朝 → 下诏 → 史官 → 落库。兼容旧接口，一次性跑完。"""
         era = self.state.era_label()
         if audience_decisions:
             self.apply_audience_decisions(audience_decisions)
+
+        # 0. 早朝群聊
+        court_speeches_data: list[dict] = []
+        try:
+            speeches, new_requests = await self.run_court()
+            court_speeches_data = [s.to_dict() for s in speeches]
+        except Exception:
+            pass
+
+        return await self._run_post_court(edict, court_speeches_data, era)
+
+    # ---------- 早朝结束后执行剩余回合 ----------
+    async def finish_turn(self, edict: str) -> TurnSummary:
+        """早朝结束后执行剩余流程：诏书执行 → 史官 → 落库。"""
+        era = self.state.era_label()
+        court_speeches_data = self.get_all_court_speeches()
+        self._collect_court_audience_requests()
+        return await self._run_post_court(edict, court_speeches_data, era)
+
+    async def _run_post_court(self, edict: str, court_speeches_data: list[dict], era: str) -> TurnSummary:
+        """早朝后的公共流程：诏书执行 → 史官推演 → 落库 → 时间推进。"""
 
         # 1. 编排解析诏书
         plan = await self.orchestrator.parse_edict(
@@ -282,6 +349,7 @@ class GameEngine:
             premonitions=prems,
             task=plan_task_snapshot,
             execution_public=execution_public,
+            court_speeches=court_speeches_data,
         )
         # 服务端持久化回合摘要（刷新页面可回看，最多保留 30 回合）
         self.turn_history.append(
@@ -295,6 +363,7 @@ class GameEngine:
                 "events_resolved": summary.events_resolved,
                 "fail_delta": dict(summary.fail_delta),
                 "audience_queue": list(summary.audience_queue),
+                "court_speeches": list(summary.court_speeches),
             }
         )
         self.turn_history = self.turn_history[-30:]

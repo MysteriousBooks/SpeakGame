@@ -46,11 +46,21 @@ def format_history(speeches: list[CourtSpeech]) -> str:
 
 
 class CourtSession:
-    """早朝群聊执行器。"""
+    """早朝群聊执行器。支持单轮执行，便于玩家实时插话。"""
 
     def __init__(self, *, max_turns: int = 3) -> None:
         self.max_turns = max_turns
         self.court_prompt = _COURT_PROMPT_PATH.read_text(encoding="utf-8") if _COURT_PROMPT_PATH.exists() else ""
+        # 实时早朝状态（跨请求持久）
+        self.speeches: list[CourtSpeech] = []
+        self.current_turn: int = 0
+        self.is_active: bool = False
+
+    def start(self) -> None:
+        """开始新一轮早朝。"""
+        self.speeches = []
+        self.current_turn = 0
+        self.is_active = True
 
     def _build_scene(self, situation: str, history_text: str, turn_idx: int) -> str:
         """构造早朝场景文本（注入朝堂公开历史 + 发言约束）。"""
@@ -62,17 +72,69 @@ class CourtSession:
             "发言须符合你的人格与派系立场。"
         )
 
+    def _build_player_interject_scene(self, player_message: str, history_text: str) -> str:
+        """构造玩家插话后的场景（皇帝发言，百官回应）。"""
+        return (
+            f"朝堂对话历史：\n{history_text}\n\n"
+            f"皇帝突然开口：「{player_message}」\n\n"
+            "请根据皇帝的话回应（可附和、进谏、补充奏报），须符合你的人格与立场。"
+        )
+
+    async def run_one_round(
+        self,
+        speaking_agents: list[BaseAgent],
+        situation: str,
+        player_message: str | None = None,
+    ) -> list[CourtSpeech]:
+        """执行一轮早朝。若有 player_message，则先注入皇帝发言再让百官回应。"""
+        if not speaking_agents or not self.is_active:
+            return []
+        round_speeches: list[CourtSpeech] = []
+        history_text = format_history(self.speeches)
+
+        # 若玩家插话，注入皇帝发言到历史
+        if player_message:
+            emperor_speech = CourtSpeech(
+                speaker_id="emperor",
+                speaker_name="皇帝",
+                public=player_message,
+            )
+            self.speeches.append(emperor_speech)
+            round_speeches.append(emperor_speech)
+            history_text = format_history(self.speeches)
+
+        # 百官本轮发言
+        for agent in speaking_agents:
+            if player_message:
+                scene = self._build_player_interject_scene(player_message, history_text)
+            else:
+                scene = self._build_scene(situation, history_text, self.current_turn)
+            out: AgentOutput = await agent.respond(
+                scene, "请在朝堂发言（请奏/附和/论辩），并表明是否求见。"
+            )
+            speech = CourtSpeech(
+                speaker_id=agent.id,
+                speaker_name=agent.name,
+                public=out.public,
+                want_audience=out.want_audience,
+                audience_topic=out.audience_topic,
+            )
+            self.speeches.append(speech)
+            round_speeches.append(speech)
+            history_text = format_history(self.speeches)
+
+        self.current_turn += 1
+        if self.current_turn >= self.max_turns:
+            self.is_active = False
+        return round_speeches
+
     async def run(
         self,
         speaking_agents: list[BaseAgent],
         situation: str,
         audience_queue: AudienceQueue | None = None,
     ) -> tuple[list[CourtSpeech], list[AudienceRequest]]:
-        """执行早朝群聊：每轮让 speaking_agents 发言，累积公开层历史，收集求见意愿。
-
-        speaking_agents 由编排按议题/品级/事件相关性选定的发言子集。
-        返回 (朝堂发言列表, 新增求见请求列表)。
-        """
+        """执行完整早朝群聊（兼容旧接口：一次性跑完所有轮）。"""
         speeches: list[CourtSpeech] = []
         new_requests: list[AudienceRequest] = []
         if not speaking_agents:

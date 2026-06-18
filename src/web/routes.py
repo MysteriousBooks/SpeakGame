@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
 from src.core.game_engine import GameEngine
+from src.recruitment.exam import ExamSystem, exam_display, get_positions_for_rank
 from src.recruitment.roster import recruit_display
 
 
@@ -41,6 +42,11 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
         snap["premonitions"] = engine.events.upcoming_premonitions(
             engine.state.current_month_index()
         )
+        # 科举状态：是否科举年 + 是否有未授官贡士
+        year = engine.state.current_year_month()[0]
+        exam_sys = ExamSystem(engine.config)
+        snap["exam_available"] = exam_sys.is_exam_year(year)
+        snap["exam_pending"] = bool(getattr(engine, "_exam_gongshi", None))
         return JSONResponse(snap)
 
     @app.get("/recruit")
@@ -77,13 +83,104 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
             inst.loyalty = max(0, inst.loyalty + out.loyalty_delta)
         return JSONResponse({"ok": True, "granted": False, "loyalty_delta": out.loyalty_delta})
 
+    @app.post("/dialogue/{agent_id}")
+    async def dialogue(agent_id: str, message: str = Form(...)) -> JSONResponse:
+        """与官员一对一对话（召见/主动问询）：玩家发消息，agent 返回公开层+私密层。"""
+        inst = engine.roster.get(agent_id)
+        if inst is None:
+            return JSONResponse({"ok": False, "error": "该官员不在朝"}, status_code=404)
+        era = engine.state.era_label()
+        scene = f"皇帝召见你，在御书房密谈。当前时间：{era}。"
+        out = await inst.agent.respond(scene, message)
+        return JSONResponse({
+            "ok": True,
+            "agent_id": agent_id,
+            "agent_name": inst.agent.name,
+            "public": out.public,
+            "private": out.private,
+            "want_audience": out.want_audience,
+        })
+
+    @app.post("/next_turn")
+    async def next_turn(edict: str = Form("")) -> StreamingResponse:
+        """下一回合：启动早朝第1轮，返回百官发言。诏书暂存，等早朝结束后执行。"""
+        edict_text = edict.strip() if edict.strip() else ""
+        # 暂存诏书，早朝结束后执行
+        engine._pending_edict = edict_text
+        court_speeches: list[dict] = []
+        try:
+            court_speeches = await engine.start_court_phase()
+        except Exception:
+            pass  # 早朝失败则跳过
+
+        async def event_stream():
+            if court_speeches:
+                yield _sse("court_round", {
+                    "speeches": court_speeches,
+                    "round": 1,
+                    "can_interject": engine.get_court_session_active(),
+                })
+            else:
+                # 无早朝（无官员），直接执行诏书
+                yield _sse("court_skip", {"reason": "无官员在朝"})
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    @app.post("/court/interject")
+    async def court_interject(message: str = Form(...)) -> JSONResponse:
+        """玩家在早朝中插话（皇帝发言），百官回应。"""
+        if not engine.get_court_session_active():
+            return JSONResponse({"ok": False, "error": "早朝已结束"}, status_code=400)
+        round_speeches, still_active = await engine.interject_court(message)
+        return JSONResponse({
+            "ok": True,
+            "speeches": round_speeches,
+            "can_interject": still_active,
+        })
+
+    @app.post("/court/end")
+    async def court_end() -> StreamingResponse:
+        """结束早朝，执行诏书 + 史官推演 + 结算。"""
+        edict_text = getattr(engine, "_pending_edict", "") or "（本回合无诏书，朝政如常）"
+        summary = await engine.finish_turn(edict_text)
+
+        async def event_stream():
+            yield _sse("narrative", summary.narrative)
+            await asyncio.sleep(0)
+            if summary.execution_public:
+                yield _sse("execution", summary.execution_public)
+            yield _sse(
+                "delta",
+                {"applied": summary.delta_applied, "clipped": summary.delta_clipped},
+            )
+            yield _sse("finance", summary.finance_settlement)
+            if summary.new_events_triggered:
+                yield _sse("new_events", summary.new_events_triggered)
+            if summary.events_resolved:
+                yield _sse("resolved", summary.events_resolved)
+            if summary.fail_delta:
+                yield _sse("fail", summary.fail_delta)
+            if summary.audience_queue:
+                yield _sse("audience", summary.audience_queue)
+            if summary.premonitions:
+                yield _sse("premonitions", summary.premonitions)
+            if summary.task:
+                yield _sse("task", summary.task)
+            yield _sse("era", summary.era)
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
     @app.post("/edict")
     async def edict(edict: str = Form(...)) -> StreamingResponse:
-        """下诏 → 执行一回合 → SSE 流式返回各段结果。"""
+        """下诏 → 执行一回合 → SSE 流式返回各段结果。（兼容旧接口）"""
         summary = await engine.run_turn(edict)
 
         async def event_stream():
-            # 分段 yield，模拟流式体验（真逐 token 流式在 M4/后续）
+            # 分段 yield，模拟流式体验
+            if summary.court_speeches:
+                yield _sse("court_speeches", summary.court_speeches)
             yield _sse("narrative", summary.narrative)
             await asyncio.sleep(0)
             if summary.execution_public:
@@ -128,6 +225,7 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
                 "premonitions": summary.premonitions,
                 "task": summary.task,
                 "execution_public": summary.execution_public,
+                "court_speeches": summary.court_speeches,
             }
         )
 
@@ -137,7 +235,188 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
 
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         engine.save(path)
+        # 额外保存 turn_history（engine.save 不含）
+        import json as _json
+        hist_path = Path(path).with_suffix(".history.json")
+        hist_path.write_text(_json.dumps(engine.turn_history, ensure_ascii=False, indent=2), encoding="utf-8")
         return JSONResponse({"ok": True, "path": path})
+
+    @app.post("/load")
+    async def load(path: str = Form("saves/save.json")) -> JSONResponse:
+        """读档：加载存档恢复全部状态（含 roster 记忆/忠诚/状态 + turn_history）。"""
+        from pathlib import Path
+        if not Path(path).exists():
+            return JSONResponse({"ok": False, "error": "存档不存在"}, status_code=404)
+        try:
+            import json
+            from src.core.world_state import WorldState
+            from src.finance.economy import FinanceParams
+            from src.core.tasks import TaskSystem
+            from src.core.audience import AudienceQueue
+            from src.events.event_engine import EventEngine
+            from src.memory.factual_memory import FactualMemory
+            from src.memory.narrative_memory import NarrativeMemory
+
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+
+            # 1. 核心状态
+            engine.state = WorldState.from_dict(data["state"], engine.state.bounds)
+            fin = data["finance"]
+            engine.finance = FinanceParams(
+                income_monthly=fin["income_monthly"],
+                expense_monthly=fin["expense_monthly"],
+                tax_rates=fin["tax_rates"],
+                zonglu_reform=fin["zonglu_reform"],
+            )
+            engine.tasks = TaskSystem.from_dict(data["tasks"])
+            engine.audience = AudienceQueue.from_dict(data["audience"])
+            engine.events = EventEngine.from_dict(data["events"], engine.config)
+
+            # 2. 恢复 roster：状态/记忆/忠诚/不满/安全度
+            era = engine.state.era_label()
+            saved_roster = data.get("roster", {}).get("instances", {})
+            for inst_id, inst_data in saved_roster.items():
+                inst = engine.roster.get(inst_id)
+                if inst is None:
+                    continue
+                # 恢复状态
+                inst.status = inst_data.get("status", "available")
+                inst.loyalty = inst_data.get("loyalty", 70)
+                inst.dissatisfaction = inst_data.get("dissatisfaction", 0)
+                inst.safety = inst_data.get("safety", 50)
+                # 恢复记忆
+                inst.factual = FactualMemory.from_dict(inst_data.get("factual", {}))
+                inst.narrative = NarrativeMemory.from_dict(inst_data.get("narrative", {}))
+                # active 角色重建 agent（用恢复后的记忆）
+                if inst.status == "active":
+                    inst.agent = engine.roster.make_agent(inst_id, engine.role_llm, era)
+                else:
+                    inst.agent = None
+
+            # 3. 恢复 turn_history
+            hist_path = Path(path).with_suffix(".history.json")
+            if hist_path.exists():
+                engine.turn_history = json.loads(hist_path.read_text(encoding="utf-8"))
+            else:
+                engine.turn_history.clear()
+
+            return JSONResponse({"ok": True, "era": engine.state.era_label()})
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    # ---- 科举系统 ----
+    @app.post("/exam/start")
+    async def exam_start() -> JSONResponse:
+        """开始科举：乡试→会试→生成贡士列表。仅科举年可用。"""
+        year = engine.state.current_year_month()[0]
+        exam = ExamSystem(engine.config)
+        if not exam.is_exam_year(year):
+            return JSONResponse({"ok": False, "error": f"崇祯{year}年非科举年"}, status_code=400)
+        juren = exam.xiangshi(year)
+        gongshi = exam.huishi(juren)
+        # 存储贡士到 engine 供殿试用，并生成名次映射
+        engine._exam_gongshi = gongshi
+        engine._exam_year = year
+        engine._exam_rankings = {c.id: i + 1 for i, c in enumerate(gongshi)}
+        difficulty = engine.config.get("game", {}).get("difficulty", "normal")
+        return JSONResponse({
+            "ok": True,
+            "year": year,
+            "candidates": [exam_display(c, difficulty) for c in gongshi],
+            "rankings": engine._exam_rankings,
+        })
+
+    @app.get("/exam/status")
+    async def exam_status() -> JSONResponse:
+        """查询科举状态：是否有待授官贡士 + 剩余贡士列表。"""
+        gongshi = getattr(engine, "_exam_gongshi", None)
+        if not gongshi:
+            return JSONResponse({"ok": True, "pending": False, "candidates": []})
+        rankings = getattr(engine, "_exam_rankings", {})
+        difficulty = engine.config.get("game", {}).get("difficulty", "normal")
+        candidates = []
+        for c in gongshi:
+            rank = rankings.get(c.id, 0)
+            info = exam_display(c, difficulty)
+            info["rank"] = rank
+            info["positions"] = get_positions_for_rank(rank)
+            candidates.append(info)
+        return JSONResponse({
+            "ok": True,
+            "pending": True,
+            "year": getattr(engine, "_exam_year", 0),
+            "candidates": candidates,
+        })
+
+    @app.post("/exam/appoint_one")
+    async def exam_appoint_one(
+        candidate_id: str = Form(...), position_id: str = Form(...)
+    ) -> JSONResponse:
+        """单人授官：为一个贡士选择职位并授官。授官后从科举列表中移除。"""
+        gongshi = getattr(engine, "_exam_gongshi", None)
+        if not gongshi:
+            return JSONResponse({"ok": False, "error": "尚未开始科举"}, status_code=400)
+        rankings = getattr(engine, "_exam_rankings", {})
+        year = getattr(engine, "_exam_year", 1)
+        era = engine.state.era_label()
+        exam = ExamSystem(engine.config)
+        try:
+            agent, pos_name = exam.appoint_one(
+                candidate_id, position_id, gongshi, rankings,
+                engine.roster, engine.role_llm, year, era,
+            )
+            # 从贡士列表中移除
+            engine._exam_gongshi = [c for c in gongshi if c.id != candidate_id]
+            if candidate_id in rankings:
+                del rankings[candidate_id]
+            # 如果全部授官完毕，清除科举状态
+            if not engine._exam_gongshi:
+                engine._exam_gongshi = None
+                engine._exam_rankings = {}
+            return JSONResponse({
+                "ok": True,
+                "name": agent.name,
+                "id": agent.id,
+                "position": pos_name,
+                "remaining": len(engine._exam_gongshi) if engine._exam_gongshi else 0,
+            })
+        except (KeyError, ValueError) as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    @app.post("/exam/dismiss")
+    async def exam_dismiss(candidate_id: str = Form(...)) -> JSONResponse:
+        """放弃某个贡士（不授官，直接移除）。"""
+        gongshi = getattr(engine, "_exam_gongshi", None)
+        if not gongshi:
+            return JSONResponse({"ok": False, "error": "尚未开始科举"}, status_code=400)
+        rankings = getattr(engine, "_exam_rankings", {})
+        engine._exam_gongshi = [c for c in gongshi if c.id != candidate_id]
+        if candidate_id in rankings:
+            del rankings[candidate_id]
+        if not engine._exam_gongshi:
+            engine._exam_gongshi = None
+            engine._exam_rankings = {}
+        return JSONResponse({"ok": True, "remaining": len(engine._exam_gongshi) if engine._exam_gongshi else 0})
+
+    @app.post("/exam/appoint")
+    async def exam_appoint(ranking: str = Form("")) -> JSONResponse:
+        """殿试授官：玩家定名次，授官为 agent。（批量版，兼容旧接口）"""
+        gongshi = getattr(engine, "_exam_gongshi", None)
+        if not gongshi:
+            return JSONResponse({"ok": False, "error": "尚未开始科举"}, status_code=400)
+        exam = ExamSystem(engine.config)
+        rank_list = [x.strip() for x in ranking.split(",") if x.strip()] if ranking else None
+        ranked = exam.dianshi(gongshi, rank_list)
+        year = getattr(engine, "_exam_year", 1)
+        era = engine.state.era_label()
+        new_agents = exam.appoint(ranked, engine.roster, engine.role_llm, year, era)
+        engine._exam_gongshi = None
+        return JSONResponse({
+            "ok": True,
+            "appointed": [{"name": a.name, "id": a.id} for a in new_agents],
+        })
 
 
 def _sse(event_type: str, data) -> str:

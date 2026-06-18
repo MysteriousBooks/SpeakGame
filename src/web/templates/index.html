@@ -59,13 +59,89 @@
     .delta-line .pos { color: var(--good); }
     .status { font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem; }
     .agents { font-size: 0.8rem; color: var(--muted); }
-    .agents span { display: inline-block; background: var(--bg); padding: 0.1rem 0.5rem; margin: 0.2rem 0.2rem 0 0; border: 1px solid var(--border); }
+    .agents span { display: inline-block; background: var(--bg); padding: 0.1rem 0.5rem; margin: 0.2rem 0.2rem 0 0; border: 1px solid var(--border); cursor: pointer; }
+    .agents span:hover { border-color: var(--accent); color: var(--accent); }
+    /* 对话弹窗 */
+    .dialogue-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 100; }
+    .dialogue-overlay.active { display: flex; align-items: center; justify-content: center; }
+    .dialogue-box { background: var(--surface); border: 1px solid var(--accent); width: 600px; max-width: 90vw; max-height: 80vh; display: flex; flex-direction: column; }
+    .dialogue-header { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 1rem; border-bottom: 1px solid var(--border); }
+    .dialogue-header h3 { margin: 0; color: var(--accent); font-size: 1rem; }
+    .dialogue-close { background: none; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; }
+    .dialogue-body { flex: 1; overflow-y: auto; padding: 0.8rem 1rem; min-height: 200px; }
+    .dialogue-turn { border-bottom: 1px dashed var(--border); padding: 0.5rem 0; }
+    .dialogue-turn .player-msg { color: var(--accent); }
+    .dialogue-turn .agent-public { color: var(--text); margin-top: 0.3rem; }
+    .dialogue-turn .agent-private { color: var(--muted); font-style: italic; margin-top: 0.3rem; font-size: 0.85rem; }
+    .dialogue-turn .agent-private::before { content: "【密奏】"; color: var(--danger); font-style: normal; margin-right: 0.3rem; }
+    .dialogue-footer { padding: 0.8rem 1rem; border-top: 1px solid var(--border); display: flex; gap: 0.5rem; }
+    .dialogue-footer input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.5rem; font-size: 0.9rem; }
+    .dialogue-footer button { background: var(--accent); color: var(--bg); border: none; padding: 0.5rem 1rem; cursor: pointer; }
+    /* 早朝发言 */
+    .court-speech { background: var(--bg); padding: 0.4rem 0.6rem; margin: 0.2rem 0; border-left: 2px solid var(--accent); font-size: 0.82rem; }
+    .court-speech .speaker { color: var(--accent); font-weight: bold; }
+    .court-speech.emperor, .court-speech.emperor-speech { border-left-color: var(--danger); }
+    .court-speech.emperor .speaker, .court-speech.emperor-speech .speaker { color: var(--danger); }
+    .court-header { color: var(--accent); font-size: 0.85rem; margin: 0.4rem 0 0.2rem; letter-spacing: 1px; }
+    /* 早朝交互面板 */
+    .court-panel { background: var(--surface); border: 1px solid var(--accent); margin: 0.5rem 0; padding: 0.6rem; }
+    .court-panel .court-title { color: var(--accent); font-size: 0.9rem; margin-bottom: 0.4rem; letter-spacing: 1px; }
+    .court-panel .speeches { max-height: 300px; overflow-y: auto; margin-bottom: 0.5rem; }
+    .court-interject { display: flex; gap: 0.5rem; margin-top: 0.4rem; }
+    .court-interject input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.5rem; font-size: 0.9rem; }
+    .court-interject button { padding: 0.4rem 1rem; cursor: pointer; border: none; font-size: 0.85rem; }
+    .court-interject .btn-interject { background: var(--accent); color: var(--bg); }
+    .court-interject .btn-end { background: var(--danger); color: #fff; }
+    .court-input { display: flex; gap: 0.5rem; margin-top: 0.5rem; padding: 0.5rem; background: var(--surface); border: 1px solid var(--accent); }
+    .court-input input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.5rem; font-size: 0.9rem; }
+    .court-input button { padding: 0.4rem 0.8rem; cursor: pointer; border: none; font-size: 0.85rem; background: var(--accent); color: var(--bg); }
+    .court-input button:disabled { opacity: 0.5; cursor: not-allowed; }
+    /* 招募/科举/财政弹窗 */
+    .toolbar { display: flex; gap: 0.5rem; margin: 0.5rem 0; flex-wrap: wrap; }
+    .toolbar button { background: none; border: 1px solid var(--accent); color: var(--accent); padding: 0.3rem 0.8rem; cursor: pointer; font-size: 0.8rem; }
+    .toolbar button:hover { background: var(--accent); color: var(--bg); }
+    .finance-detail { font-size: 0.82rem; background: var(--bg); padding: 0.6rem; margin: 0.3rem 0; }
+    .finance-detail table { width: 100%; border-collapse: collapse; }
+    .finance-detail td, .finance-detail th { padding: 0.2rem 0.4rem; text-align: left; border-bottom: 1px solid var(--border); }
+    .finance-detail th { color: var(--accent); }
+    /* 通用模态框 */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 100; }
+    .modal-overlay.active { display: flex; align-items: center; justify-content: center; }
+    .modal-box { background: var(--surface); border: 1px solid var(--accent); width: 700px; max-width: 90vw; max-height: 80vh; display: flex; flex-direction: column; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 1rem; border-bottom: 1px solid var(--border); }
+    .modal-header h3 { margin: 0; color: var(--accent); font-size: 1rem; }
+    .modal-close { background: none; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; }
+    .modal-body { flex: 1; overflow-y: auto; padding: 0.8rem 1rem; }
+    .modal-footer { padding: 0.6rem 1rem; border-top: 1px solid var(--border); display: flex; gap: 0.5rem; justify-content: flex-end; }
+    .modal-footer button { background: var(--accent); color: var(--bg); border: none; padding: 0.4rem 1rem; cursor: pointer; }
+    .card { background: var(--bg); border: 1px solid var(--border); padding: 0.5rem; margin: 0.3rem 0; font-size: 0.85rem; }
+    .card .name { color: var(--accent); font-weight: bold; }
+    .card .meta { color: var(--muted); font-size: 0.78rem; }
+    .card button { background: none; border: 1px solid var(--accent); color: var(--accent); padding: 0.15rem 0.5rem; cursor: pointer; font-size: 0.75rem; float: right; }
+    .card button:hover { background: var(--accent); color: var(--bg); }
+    /* 殿试授官 */
+    .exam-card { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; background: var(--bg); border: 1px solid var(--border); padding: 0.5rem; margin: 0.3rem 0; font-size: 0.85rem; }
+    .exam-card .rank { color: var(--accent); font-weight: bold; margin-right: 0.5rem; }
+    .exam-card .info { flex: 1; min-width: 120px; }
+    .exam-card .actions { display: flex; align-items: center; gap: 0.3rem; }
+    .exam-card select { background: var(--bg); color: var(--text); border: 1px solid var(--border); padding: 0.2rem; font-size: 0.8rem; }
+    .exam-card button { background: var(--accent); color: var(--bg); border: none; padding: 0.2rem 0.6rem; cursor: pointer; font-size: 0.8rem; }
+    .exam-card button.dismiss { background: var(--danger, #a33); }
+    .badge-dot { position: relative; }
+    .badge-dot::after { content: ''; position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; background: #e33; border-radius: 50%; display: none; }
+    .badge-dot.has-new::after { display: block; }
   </style>
 </head>
 <body>
   <section class="panel" id="state-panel">
     <h1>崇 祯 朝</h1>
     <div class="era" id="era">{{ state.era }}</div>
+    <div class="toolbar">
+      <button onclick="openRecruit()">招募</button>
+      <button onclick="startExam()" class="badge-dot" id="exam-btn">科举</button>
+      <button onclick="saveGame()">存档</button>
+      <button onclick="loadGame()">读档</button>
+    </div>
 
     <h2>国库 / 内帑</h2>
     <div class="treasury-split">
@@ -78,6 +154,8 @@
         <div class="num" id="inner">{{ state['values']['内帑'] | int }}</div>
       </div>
     </div>
+    <div class="finance-detail" id="finance-detail" style="display:none"></div>
+    <button style="background:none;border:1px solid var(--border);color:var(--muted);padding:0.2rem 0.5rem;cursor:pointer;font-size:0.75rem" onclick="toggleFinance()">财政详情 ▼</button>
 
     <h2>天下大势</h2>
     <div class="values" id="values">
@@ -112,7 +190,7 @@
         <div class="audience-item" data-agent="{{ q.agent_id }}">
           <span>{{ q.agent_name }} · <span class="topic">{{ q.topic }}</span></span>
           <span>
-            <button onclick="audience('{{ q.agent_id }}','grant')">召见</button>
+            <button onclick="openDialogue('{{ q.agent_id }}','{{ q.agent_name }}')">召见</button>
             <button class="decline" onclick="audience('{{ q.agent_id }}','decline')">不见</button>
           </span>
         </div>
@@ -120,25 +198,103 @@
       {% if not state.audience_queue %}<div style="color:var(--muted);font-size:0.82rem">无人求见</div>{% endif %}
     </div>
 
-    <h2>在朝百官</h2>
+    <h2>在朝百官（点击可问询）</h2>
     <div class="agents" id="agents">
-      {% for a in state.active_agents %}<span>{{ a.name }}</span>{% endfor %}
+      {% for a in state.active_agents %}<span onclick="openDialogue('{{ a.id }}','{{ a.name }}')">{{ a.name }}</span>{% endfor %}
     </div>
   </section>
 
   <section class="panel" id="dialog-panel">
-    <h2>下诏推演</h2>
-    <form id="edict-form" onsubmit="return submitEdict(event)">
-      <input type="text" id="edict-input" placeholder="如：陕西旱灾，拨银十万两赈灾" autocomplete="off" />
-      <button class="submit" id="submit-btn" type="submit">下诏</button>
+    <h2>玩家回合</h2>
+    <div class="status" id="status" style="margin-bottom:0.4rem">可下诏、对话百官、招募、科举，然后点“下一回合”推进推演</div>
+    <form id="edict-form" onsubmit="return nextTurn(event)">
+      <input type="text" id="edict-input" placeholder="可选：下达诏书（如：赈灾拨银十万），或留空直接推进" autocomplete="off" />
+      <button class="submit" id="submit-btn" type="submit">下一回合 ▶</button>
     </form>
-    <div class="status" id="status">mock 模式：可下诏推演（真实模型需配置 .env Key）</div>
     <div class="dialog" id="dialog">
       <div class="turn" style="color:var(--muted)">开局：崇祯元年正月，帝登基。魏忠贤阉党专权，陕西连旱，辽东后金威胁。请下诏理政。</div>
     </div>
   </section>
 
+  <!-- 招募弹窗 -->
+  <div class="modal-overlay" id="recruit-modal">
+    <div class="modal-box">
+      <div class="modal-header"><h3>招募池</h3><button class="modal-close" onclick="closeModal('recruit-modal')">&times;</button></div>
+      <div class="modal-body" id="recruit-body">加载中…</div>
+    </div>
+  </div>
+
+  <!-- 科举殿试弹窗 -->
+  <div class="modal-overlay" id="exam-modal">
+    <div class="modal-box">
+      <div class="modal-header"><h3 id="exam-title">殿试 · 贡士授官</h3><button class="modal-close" onclick="closeModal('exam-modal')">&times;</button></div>
+      <div class="modal-body" id="exam-body"><div style="color:var(--muted)">加载中…</div></div>
+    </div>
+  </div>
+
+  <!-- 对话弹窗 -->
+  <div class="dialogue-overlay" id="dialogue-overlay">
+    <div class="dialogue-box">
+      <div class="dialogue-header">
+        <h3 id="dialogue-agent-name">—</h3>
+        <button class="dialogue-close" onclick="closeDialogue()">&times;</button>
+      </div>
+      <div class="dialogue-body" id="dialogue-body"></div>
+      <div class="dialogue-footer">
+        <input type="text" id="dialogue-input" placeholder="对大臣说…" onkeydown="if(event.key==='Enter')sendDialogue()" />
+        <button onclick="sendDialogue()">问</button>
+      </div>
+    </div>
+  </div>
+
   <script>
+    // ---- 对话系统 ----
+    let currentDialogueAgent = null;
+
+    function openDialogue(agentId, agentName) {
+      currentDialogueAgent = agentId;
+      document.getElementById('dialogue-agent-name').textContent = agentName;
+      document.getElementById('dialogue-body').innerHTML = '';
+      document.getElementById('dialogue-input').value = '';
+      document.getElementById('dialogue-overlay').classList.add('active');
+      document.getElementById('dialogue-input').focus();
+    }
+
+    function closeDialogue() {
+      document.getElementById('dialogue-overlay').classList.remove('active');
+      currentDialogueAgent = null;
+    }
+
+    async function sendDialogue() {
+      const input = document.getElementById('dialogue-input');
+      const msg = input.value.trim();
+      if (!msg || !currentDialogueAgent) return;
+      input.value = '';
+      const body = document.getElementById('dialogue-body');
+      // 显示玩家消息
+      const turn = document.createElement('div');
+      turn.className = 'dialogue-turn';
+      turn.innerHTML = '<div class="player-msg">【帝】' + msg + '</div><div style="color:var(--muted)">思考中…</div>';
+      body.appendChild(turn);
+      body.scrollTop = body.scrollHeight;
+      try {
+        const resp = await fetch('/dialogue/' + currentDialogueAgent, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: 'message=' + encodeURIComponent(msg)
+        });
+        const r = await resp.json();
+        if (!r.ok) { turn.innerHTML = '<div class="player-msg">【帝】' + msg + '</div><div style="color:var(--danger)">' + (r.error || '对话失败') + '</div>'; return; }
+        let html = '<div class="player-msg">【帝】' + msg + '</div>';
+        html += '<div class="agent-public">' + r.public + '</div>';
+        if (r.private) html += '<div class="agent-private">' + r.private + '</div>';
+        turn.innerHTML = html;
+      } catch (err) {
+        turn.innerHTML = '<div class="player-msg">【帝】' + msg + '</div><div style="color:var(--danger)">请求失败：' + err + '</div>';
+      }
+      body.scrollTop = body.scrollHeight;
+    }
+
     function fmtDelta(applied) {
       if (!applied || !Object.keys(applied).length) return '<div class="meta">数值无变化</div>';
       return Object.entries(applied).map(([k,v]) => {
@@ -148,50 +304,423 @@
       }).join('');
     }
 
-    async function submitEdict(e) {
+    // ---- 通用模态框 ----
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+    function openModal(id) { document.getElementById(id).classList.add('active'); }
+
+    // ---- 财政详情 ----
+    let financeVisible = false;
+    function toggleFinance() {
+      const el = document.getElementById('finance-detail');
+      financeVisible = !financeVisible;
+      if (financeVisible) {
+        fetch('/state').then(r=>r.json()).then(s => {
+          const f = s.finance || {};
+          let html = '<table>';
+          html += '<tr><th colspan="2">月收入</th></tr>';
+          for (const [k,v] of Object.entries(f.income_monthly||{})) html += `<tr><td>${k}</td><td>${v|0}</td></tr>`;
+          html += '<tr><th colspan="2">月支出</th></tr>';
+          for (const [k,v] of Object.entries(f.expense_monthly||{})) html += `<tr><td>${k}</td><td>${v|0}</td></tr>`;
+          html += '<tr><th colspan="2">税率</th></tr>';
+          for (const [k,v] of Object.entries(f.tax_rates||{})) html += `<tr><td>${k}</td><td>${(v*100).toFixed(1)}%</td></tr>`;
+          html += '</table>';
+          el.innerHTML = html;
+          el.style.display = 'block';
+        });
+      } else {
+        el.style.display = 'none';
+      }
+    }
+
+    // ---- 招募 ----
+    function openRecruit() {
+      openModal('recruit-modal');
+      fetch('/recruit').then(r=>r.json()).then(data => {
+        const body = document.getElementById('recruit-body');
+        if (!data.candidates || !data.candidates.length) { body.innerHTML = '<div style="color:var(--muted)">暂无可招募之人</div>'; return; }
+        body.innerHTML = data.candidates.map(c => {
+          let meta = '';
+          if (c.skills) meta += '擅长：' + c.skills.join('、') + ' ';
+          if (c.historical_alignment) meta += `阵营：${c.historical_alignment} `;
+          if (c.death_cause && c.death_cause.type !== 'natural') meta += `⚠ ${c.death_cause.desc} `;
+          if (c.recruitment_condition) meta += `[${c.recruitment_condition}]`;
+          return `<div class="card"><span class="name">${c.name}</span><button onclick="doRecruit('${c.id}')">招募</button><div class="meta">${meta}</div></div>`;
+        }).join('');
+      });
+    }
+    async function doRecruit(id) {
+      const r = await fetch('/recruit/' + id, {method:'POST'});
+      const data = await r.json();
+      if (data.ok) { openRecruit(); refreshState(); }
+      else alert(data.error || '招募失败');
+    }
+
+    // ---- 科举 ----
+    let examCandidates = [];
+    let examRankings = {};
+
+    async function startExam() {
+      // 先检查是否有未授官的贡士
+      const st = await (await fetch('/exam/status')).json();
+      if (st.pending && st.candidates.length) {
+        renderExamModal(st.candidates);
+        openModal('exam-modal');
+        return;
+      }
+      // 否则开始新一轮科举
+      const fd = new FormData();
+      const r = await fetch('/exam/start', {method:'POST', body: fd});
+      const data = await r.json();
+      if (!data.ok) { alert(data.error || '科举失败'); return; }
+      examCandidates = data.candidates;
+      examRankings = data.rankings || {};
+      // 获取含职位的完整列表
+      const st2 = await (await fetch('/exam/status')).json();
+      if (st2.pending) {
+        renderExamModal(st2.candidates);
+      }
+      openModal('exam-modal');
+    }
+
+    function renderExamModal(candidates) {
+      const body = document.getElementById('exam-body');
+      if (!candidates.length) {
+        body.innerHTML = '<div style="color:var(--muted)">所有贡士已授官完毕</div>';
+        return;
+      }
+      body.innerHTML = candidates.map((c, i) => {
+        let meta = '';
+        if (c.origin_province) meta += `籍贯：${c.origin_province} `;
+        if (c.ability_tendency) meta += `倾向：${c.ability_tendency} `;
+        if (c.background) meta += `<span style="color:var(--muted)">${c.background}</span> `;
+        const rank = c.rank || (i + 1);
+        const rankLabel = rank === 1 ? '状元' : rank === 2 ? '榜眼' : rank === 3 ? '探花' : `二甲第${rank-3}`;
+        // 职位选择
+        const positions = c.positions || [];
+        let posHtml = '';
+        if (positions.length === 1) {
+          posHtml = `<span style="color:var(--accent);font-size:0.8rem">${positions[0].name}</span>` +
+            `<input type="hidden" id="pos-${c.id}" value="${positions[0].id}" />`;
+        } else {
+          posHtml = `<select id="pos-${c.id}">` +
+            positions.map(p => `<option value="${p.id}" title="${p.desc||''}">${p.name}</option>`).join('') +
+            `</select>`;
+        }
+        return `<div class="exam-card" id="card-${c.id}">` +
+          `<div class="info"><span class="rank">[${rankLabel}]</span> <strong>${c.name}</strong><div class="meta">${meta}</div>` +
+          `<div style="font-size:0.8rem;color:var(--text);margin-top:0.2rem">${c.answer_text||''}</div></div>` +
+          `<div class="actions">${posHtml} <button onclick="appointOne('${c.id}')">授官</button>` +
+          `<button class="dismiss" onclick="dismissOne('${c.id}')">放弃</button></div></div>`;
+      }).join('');
+      document.getElementById('exam-title').textContent = `殿试 · 待授官 ${candidates.length} 人`;
+    }
+
+    async function appointOne(candidateId) {
+      const posSelect = document.getElementById('pos-' + candidateId);
+      const positionId = posSelect ? posSelect.value : '';
+      if (!positionId) { alert('请选择职位'); return; }
+      const fd = new FormData();
+      fd.append('candidate_id', candidateId);
+      fd.append('position_id', positionId);
+      const r = await fetch('/exam/appoint_one', {method:'POST', body: fd});
+      const data = await r.json();
+      if (!data.ok) { alert(data.error || '授官失败'); return; }
+      // 从列表中移除该卡片
+      const card = document.getElementById('card-' + candidateId);
+      if (card) card.remove();
+      // 更新标题计数
+      const remaining = document.querySelectorAll('#exam-body .exam-card').length;
+      document.getElementById('exam-title').textContent = remaining > 0 ? `殿试 · 待授官 ${remaining} 人` : '殿试 · 授官完毕';
+      if (remaining === 0) {
+        document.getElementById('exam-body').innerHTML = '<div style="color:var(--accent)">本届科举授官完毕！</div>';
+        closeModal('exam-modal');
+      }
+      refreshState();
+    }
+
+    async function dismissOne(candidateId) {
+      if (!confirm('确定放弃该贡士？')) return;
+      const fd = new FormData();
+      fd.append('candidate_id', candidateId);
+      const r = await fetch('/exam/dismiss', {method:'POST', body: fd});
+      const data = await r.json();
+      if (!data.ok) { alert(data.error || '操作失败'); return; }
+      const card = document.getElementById('card-' + candidateId);
+      if (card) card.remove();
+      const remaining = document.querySelectorAll('#exam-body .exam-card').length;
+      document.getElementById('exam-title').textContent = remaining > 0 ? `殿试 · 待授官 ${remaining} 人` : '殿试 · 授官完毕';
+      if (remaining === 0) closeModal('exam-modal');
+    }
+
+    async function submitExam() {
+      // 兼容旧接口（批量授官）
+      const cards = document.querySelectorAll('#exam-body .exam-card');
+      const ranking = Array.from(cards).map(c => c.dataset.id).join(',');
+      const r = await fetch('/exam/appoint', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'ranking='+encodeURIComponent(ranking)});
+      const data = await r.json();
+      if (data.ok) {
+        alert('授官完成：' + data.appointed.map(a=>a.name).join('、'));
+        closeModal('exam-modal');
+        refreshState();
+      } else alert(data.error || '授官失败');
+    }
+
+    // ---- 存档/读档 ----
+    async function saveGame() {
+      const fd = new FormData(); fd.append('path', 'saves/save.json');
+      const r = await fetch('/save', {method:'POST', body: fd});
+      const data = await r.json();
+      if (data.ok) alert('存档成功：' + data.path);
+      else alert('存档失败');
+    }
+    async function loadGame() {
+      if (!confirm('读档将覆盖当前进度，确定？')) return;
+      const fd = new FormData(); fd.append('path', 'saves/save.json');
+      const r = await fetch('/load', {method:'POST', body: fd});
+      const data = await r.json();
+      if (data.ok) { alert('读档成功：' + data.era); location.reload(); }
+      else alert(data.error || '读档失败');
+    }
+
+    // ---- 下一回合（实时早朝 + 推演） ----
+
+    let courtActive = false;  // 当前是否在早朝中
+
+    async function nextTurn(e) {
       e.preventDefault();
       const input = document.getElementById('edict-input');
       const btn = document.getElementById('submit-btn');
       const edict = input.value.trim();
-      if (!edict) return false;
       btn.disabled = true; input.value = '';
-      document.getElementById('status').textContent = '推演中…';
-      const turn = document.createElement('div'); turn.className = 'turn';
+      document.getElementById('status').textContent = '早朝开始…';
+
+      // 创建回合展示区域
+      const turn = document.createElement('div'); turn.className = 'turn'; turn.id = 'current-turn';
       document.getElementById('dialog').prepend(turn);
-      turn.innerHTML = '<div class="narrative">【下诏】' + edict + '</div><div class="meta">推演中…</div>';
+      turn.innerHTML = '<div class="meta">推演中…</div>';
+
       try {
-        const resp = await fetch('/edict/json', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: 'edict=' + encodeURIComponent(edict)
-        });
-        const r = await resp.json();
-        let html = '<div class="narrative">【下诏】' + edict + '</div>';
-        if (r.execution_public && r.execution_public.length) {
-          html += r.execution_public.map(e => `<div class="meta">${e.name}奏：${e.public}</div>`).join('');
+        const fd = new FormData();
+        if (edict) fd.append('edict', edict);
+        const resp = await fetch('/next_turn', { method: 'POST', body: fd });
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let html = '';
+        while (true) {
+          const {done, value} = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, {stream: true});
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6).trim();
+            if (payload === '[DONE]') continue;
+            try {
+              const evt = JSON.parse(payload);
+              if (evt.type === 'court_round') {
+                html += renderCourtRound(evt.data);
+                courtActive = evt.data.can_interject;
+                if (courtActive) showCourtInput(turn);
+              } else if (evt.type === 'court_skip') {
+                // 无早朝，直接进入推演
+                courtActive = false;
+                const edictLabel = edict ? '【下诏】' + edict : '【推进】本月无事，朝政如常';
+                turn.innerHTML = '<div class="narrative">' + edictLabel + '</div>';
+                await runCourtEnd(turn);
+                return false;
+              }
+            } catch(e) {}
+          }
+          turn.innerHTML = html || '<div class="meta">推演中…</div>';
         }
-        if (r.narrative) html += `<div class="narrative" style="margin-top:0.4rem">${r.narrative}</div>`;
-        html += fmtDelta(r.delta_applied);
-        if (r.new_events_triggered && r.new_events_triggered.length) html += `<div class="meta">新事件：${r.new_events_triggered.join('、')}</div>`;
-        if (r.events_resolved && r.events_resolved.length) html += `<div class="meta" style="color:var(--good)">已平息：${r.events_resolved.join('、')}</div>`;
-        if (r.audience_queue && r.audience_queue.length) html += `<div class="meta">求见：${r.audience_queue.map(q=>q.topic).join('、')}</div>`;
-        if (r.fail_delta && Object.keys(r.fail_delta).length) html += `<div class="meta" style="color:var(--danger)">恶化：${JSON.stringify(r.fail_delta)}</div>`;
         turn.innerHTML = html;
-        refreshState();
+        if (courtActive && !document.getElementById('court-input-area')) showCourtInput(turn);
+        else if (!courtActive) await runCourtEnd(html, turn);
       } catch (err) {
         turn.innerHTML = '<div class="narrative">推演失败：' + err + '</div>';
       } finally {
         btn.disabled = false;
-        document.getElementById('status').textContent = 'mock 模式';
+        document.getElementById('status').textContent = courtActive ? '早朝进行中，可插话或结束早朝' : '可下诏、对话百官、招募、科举，然后点“下一回合”推进推演';
       }
       return false;
     }
+
+    function renderCourtRound(data) {
+      let html = '<div class="court-header">—— 早朝议政 第' + data.round + '轮 ——</div>';
+      for (const s of data.speeches) {
+        if (s.speaker_id === 'emperor') {
+          html += '<div class="court-speech emperor-speech"><span class="speaker">【帝】</span>' + s.public + '</div>';
+        } else {
+          html += '<div class="court-speech"><span class="speaker">' + s.speaker_name + '：</span>' + s.public + '</div>';
+        }
+      }
+      return html;
+    }
+
+    function showCourtInput(turn) {
+      // 如果已有输入区则不重复添加
+      if (document.getElementById('court-input-area')) return;
+      const area = document.createElement('div');
+      area.id = 'court-input-area';
+      area.className = 'court-input';
+      area.innerHTML = '<input type="text" id="court-msg" placeholder="皇帝插话：对百官说…" />' +
+        '<button onclick="courtInterject()">发言</button>' +
+        '<button onclick="courtEnd()" style="background:var(--danger,#a33)">结束早朝 ▶</button>';
+      turn.appendChild(area);
+      document.getElementById('court-msg').focus();
+      document.getElementById('court-msg').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') courtInterject();
+      });
+    }
+
+    async function courtInterject() {
+      const input = document.getElementById('court-msg');
+      const msg = input.value.trim();
+      if (!msg) return;
+      input.value = '';
+      const turn = document.getElementById('current-turn');
+      // 移除输入区，显示皇帝发言
+      const area = document.getElementById('court-input-area');
+      if (area) area.remove();
+      turn.innerHTML += '<div class="court-speech emperor-speech"><span class="speaker">【帝】</span>' + msg + '</div>';
+      turn.innerHTML += '<div class="meta">百官回应中…</div>';
+      turn.scrollTop = turn.scrollHeight;
+
+      try {
+        const fd = new FormData();
+        fd.append('message', msg);
+        const r = await fetch('/court/interject', { method: 'POST', body: fd });
+        const data = await r.json();
+        // 移除“百官回应中…”
+        const meta = turn.querySelector('.meta:last-child');
+        if (meta) meta.remove();
+        if (data.ok) {
+          // 渲染本轮发言（跳过皇帝发言，已显示过了）
+          let html = '';
+          for (const s of data.speeches) {
+            if (s.speaker_id !== 'emperor') {
+              html += '<div class="court-speech"><span class="speaker">' + s.speaker_name + '：</span>' + s.public + '</div>';
+            }
+          }
+          turn.innerHTML += html;
+          courtActive = data.can_interject;
+          if (courtActive) showCourtInput(turn);
+          else {
+            turn.innerHTML += '<div class="meta" id="court-ending">早朝结束，推演中…</div>';
+            await runCourtEnd(turn);
+          }
+        } else {
+          turn.innerHTML += '<div class="meta" style="color:var(--danger)">' + (data.error || '插话失败') + '</div>';
+        }
+      } catch (err) {
+        turn.innerHTML += '<div class="meta" style="color:var(--danger)">请求失败：' + err + '</div>';
+      }
+      turn.scrollTop = turn.scrollHeight;
+    }
+
+    async function courtEnd() {
+      courtActive = false;
+      const area = document.getElementById('court-input-area');
+      if (area) area.remove();
+      const turn = document.getElementById('current-turn');
+      if (turn) turn.innerHTML += '<div class="meta" id="court-ending">早朝结束，推演中…</div>';
+      await runCourtEnd(turn);
+    }
+    
+    async function runCourtEnd(turn) {
+      document.getElementById('status').textContent = '推演中…';
+      document.getElementById('submit-btn').disabled = true;
+      // 移除临时提示（保留早朝发言）
+      const ending = document.getElementById('court-ending');
+      if (ending) ending.remove();
+      // 保存早朝发言 HTML
+      const baseHtml = turn ? turn.innerHTML : '';
+      let html = baseHtml;
+      try {
+        const resp = await fetch('/court/end', { method: 'POST' });
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const {done, value} = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, {stream: true});
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6).trim();
+            if (payload === '[DONE]') continue;
+            try {
+              const evt = JSON.parse(payload);
+              const t = evt.type, d = evt.data;
+              if (t === 'narrative') {
+                if (d) html += `<div class="narrative" style="margin-top:0.4rem">${d}</div>`;
+              } else if (t === 'execution') {
+                html += (d||[]).map(e => `<div class="meta">${e.name}奏：${e.public}</div>`).join('');
+              } else if (t === 'delta') {
+                html += fmtDelta(d && d.applied);
+              } else if (t === 'new_events') {
+                html += `<div class="meta">新事件：${(d||[]).join('、')}</div>`;
+              } else if (t === 'resolved') {
+                html += `<div class="meta" style="color:var(--good)">已平息：${(d||[]).join('、')}</div>`;
+              } else if (t === 'fail') {
+                html += `<div class="meta" style="color:var(--danger)">恶化：${JSON.stringify(d)}</div>`;
+              } else if (t === 'audience') {
+                html += `<div class="meta">求见：${(d||[]).map(q=>q.topic).join('、')}</div>`;
+              }
+            } catch(e) {}
+          }
+          if (turn) turn.innerHTML = html;
+        }
+        if (turn) turn.innerHTML = html;
+        refreshState();
+      } catch (err) {
+        if (turn) turn.innerHTML += '<div class="narrative">推演失败：' + err + '</div>';
+      } finally {
+        document.getElementById('submit-btn').disabled = false;
+        document.getElementById('status').textContent = '可下诏、对话百官、招募、科举，然后点"下一回合"推进推演';
+      }
+    }
+
+    // ---- 页面加载时渲染历史回合 ----
+    async function renderHistory() {
+      const s = await (await fetch('/state')).json();
+      const dialog = document.getElementById('dialog');
+      if (!s.history || !s.history.length) return;
+      // 清空开局提示
+      dialog.innerHTML = '';
+      for (const h of s.history) {
+        const turn = document.createElement('div');
+        turn.className = 'turn';
+        let html = '';
+        html += '<div class="narrative">【下诏】' + (h.edict || '') + '</div>';
+        // 早朝发言（历史）
+        if (h.court_speeches && h.court_speeches.length) {
+          html += '<div class="court-header">—— 早朝议政 ——</div>';
+          html += h.court_speeches.map(s => `<div class="court-speech"><span class="speaker">${s.speaker_name}：</span>${s.public}</div>`).join('');
+        }
+        if (h.execution_public && h.execution_public.length) {
+          html += h.execution_public.map(e => `<div class="meta">${e.name}奏：${e.public}</div>`).join('');
+        }
+        if (h.narrative) html += `<div class="narrative" style="margin-top:0.4rem">${h.narrative}</div>`;
+        turn.innerHTML = html;
+        dialog.appendChild(turn);
+      }
+      // 滚动到底部
+      dialog.scrollTop = dialog.scrollHeight;
+    }
+    renderHistory();
 
     async function audience(agentId, action) {
       const fd = new FormData(); fd.append('action', action);
       await fetch('/audience/' + agentId, {method: 'POST', body: fd});
       refreshState();
     }
+
+    // 求见队列中的"召见"按钮改为 openDialogue（已在 HTML 中处理）
 
     async function refreshState() {
       const s = await (await fetch('/state')).json();
@@ -208,9 +737,15 @@
         `<div class="premonition">${p.name}<span class="level">${p.level}</span><div style="font-size:0.75rem;color:var(--muted)">${p.text}</div></div>`
       ).join('') || '<div style="color:var(--muted);font-size:0.82rem">暂无</div>';
       document.getElementById('audience').innerHTML = (s.audience_queue||[]).map(q=>
-        `<div class="audience-item"><span>${q.agent_name} · <span class="topic">${q.topic}</span></span><span><button onclick="audience('${q.agent_id}','grant')">召见</button><button class="decline" onclick="audience('${q.agent_id}','decline')">不见</button></span></div>`
+        `<div class="audience-item"><span>${q.agent_name} · <span class="topic">${q.topic}</span></span><span><button onclick="openDialogue('${q.agent_id}','${q.agent_name}')">召见</button><button class="decline" onclick="audience('${q.agent_id}','decline')">不见</button></span></div>`
       ).join('') || '<div style="color:var(--muted);font-size:0.82rem">无人求见</div>';
-      document.getElementById('agents').innerHTML = (s.active_agents||[]).map(a=>`<span>${a.name}</span>`).join('');
+      document.getElementById('agents').innerHTML = (s.active_agents||[]).map(a=>`<span onclick="openDialogue('${a.id}','${a.name}')">${a.name}</span>`).join('');
+      // 科举红点：科举年或有未授官贡士时显示红点
+      const examBtn = document.getElementById('exam-btn');
+      if (examBtn) {
+        if (s.exam_available || s.exam_pending) examBtn.classList.add('has-new');
+        else examBtn.classList.remove('has-new');
+      }
     }
   </script>
 </body>

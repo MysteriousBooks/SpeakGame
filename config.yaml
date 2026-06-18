@@ -11,10 +11,10 @@ game:
   exam_cycle_years: 3      # 科举周期（明制3，可改1）
 
 llm:
-  default_provider: mock  # mock | deepseek | qwen | claude
-  orchestrator: {provider: claude, model: claude-opus-4-8}
-  historian:   {provider: claude, model: claude-opus-4-8}
-  role_agent:  {provider: deepseek, model: deepseek-chat}
+  default_provider: ollama  # mock | deepseek | qwen | claude | ollama
+  orchestrator: {provider: ollama, model: "minicpm-v4.6-cpu-256k:latest"}       # 编排：需要强 JSON + 路由推理
+  historian:   {provider: ollama, model: "minicpm-v4.6-cpu-256k:latest"}         # 史官：需要强 JSON + 叙事 + 数值
+  role_agent:  {provider: ollama, model: "minicpm-v4.6-cpu-256k:latest"} # 百官：schema简单，要快（多agent并行）
 
 # 数值边界 + 单回合 max_delta（史官 delta 代码校验，防骤变）
 bounds:

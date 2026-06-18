@@ -26,6 +26,7 @@ DEFAULT_BASE_URLS: dict[str, str] = {
     "deepseek": "https://api.deepseek.com",
     "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "claude": "https://api.anthropic.com",
+    "ollama": "http://localhost:11434/v1",
 }
 ENV_KEY: dict[str, str] = {
     "deepseek": "DEEPSEEK_API_KEY",
@@ -422,6 +423,59 @@ class ClaudeProvider(LLMProvider):
             self._client = None
 
 
+def _default_mock_json(messages: Sequence[Message], schema: dict) -> dict:
+    """根据 schema 自动生成有意义的 mock 响应（而非空 {}）。"""
+    props = schema.get("properties", {})
+    result: dict = {}
+
+    # --- 编排 schema（action + dispatch_targets） ---
+    if "action" in props and "dispatch_targets" in props:
+        result["action"] = "execute"
+        result["dispatch_targets"] = []
+        result["visits"] = []
+        result["activation_order"] = []
+        result["reason"] = "（mock 编排：默认执行）"
+        return result
+
+    # --- 史官 schema（narrative + delta + audience_queue） ---
+    if "narrative" in props and "delta" in props:
+        result["narrative"] = "（mock 叙事）帝下诏，群臣奉行，朝局如常。"
+        result["delta"] = {"民心": 1, "军力": 0}
+        result["finance_delta"] = {}
+        result["new_events"] = []
+        result["factual_notes"] = ["mock 回合执行完毕"]
+        result["audience_queue"] = []
+        result["premonitions"] = []
+        return result
+
+    # --- agent schema（public + private + want_audience） ---
+    if "public" in props and "private" in props:
+        # 从用户消息中提取问题内容，融入回复
+        user_msg = ""
+        if messages:
+            user_msg = messages[-1].content[:80]
+        result["public"] = f"臣已听明陛下所言：「{user_msg}」。臣当即刻着手办理，容臣细细筹划后上奏。"
+        result["private"] = f"（内心）陛下问及「{user_msg}」，此事涉及甚广，须谨慎应对，不可轻易承诺。"
+        result["want_audience"] = False
+        result["audience_topic"] = ""
+        return result
+
+    # --- 兜底：按 schema 类型填默认值 ---
+    for key, val in props.items():
+        t = val.get("type", "string")
+        if t == "string":
+            result[key] = f"（mock {key}）"
+        elif t == "number" or t == "integer":
+            result[key] = 0
+        elif t == "boolean":
+            result[key] = False
+        elif t == "array":
+            result[key] = []
+        elif t == "object":
+            result[key] = {}
+    return result
+
+
 def get_provider(
     name: str,
     *,
@@ -429,10 +483,16 @@ def get_provider(
     api_key: str | None = None,
     base_url: str | None = None,
 ) -> LLMProvider:
-    """工厂：按 name 创建 provider。mock 无需 Key。"""
+    """工厂：按 name 创建 provider。mock 无需 Key，ollama 无需 Key。"""
     name = name.lower()
     if name == "mock":
-        return MockProvider()
+        return MockProvider(json_responder=_default_mock_json)
+    # Ollama：本地运行，无需 API Key，OpenAI 兼容格式
+    if name == "ollama":
+        ollama_url = base_url or os.environ.get("OLLAMA_BASE_URL", DEFAULT_BASE_URLS["ollama"])
+        return _OpenAICompatibleProvider(
+            "ollama", model or "qwen2.5", "ollama", ollama_url
+        )
     key = api_key or os.environ.get(ENV_KEY.get(name, ""), "")
     if not key:
         raise LLMError(f"provider {name} 缺少 API Key（环境变量 {ENV_KEY.get(name)} 未设置）")
