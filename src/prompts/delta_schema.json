@@ -1,37 +1,79 @@
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "HistorianTurnOutput",
+  "description": "史官每回合推演输出的结构化 schema",
   "type": "object",
-  "required": ["narrative", "delta", "new_events", "factual_notes", "audience_queue"],
   "properties": {
-    "narrative": {"type": "string"},
+    "narrative": {
+      "type": "string",
+      "description": "本回合叙事摘要（一段，已压缩）"
+    },
     "delta": {
       "type": "object",
-      "description": "数值变更（键值对，键来自 bounds 配置，值为整数变更量）",
+      "description": "全局数值变更（受代码 max_delta 裁剪 + min/max clamp）。财政自然收支也并入此（国库净变化）",
       "additionalProperties": {"type": "number"}
     },
-    "new_events": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["type", "trigger_condition"],
-        "properties": {
-          "type": {"type": "string"},
-          "province": {"type": "string"},
-          "trigger_condition": {"type": "string"},
-          "resolve_conditions": {"type": "object"}
+    "finance_delta": {
+      "type": "object",
+      "description": "财政参数变更（下回合结算用新参数）",
+      "properties": {
+        "tax_rates": {"type": "object", "additionalProperties": {"type": "number"}},
+        "income_monthly": {"type": "object", "additionalProperties": {"type": "number"}},
+        "expense_monthly": {"type": "object", "additionalProperties": {"type": "number"}},
+        "zonglu_reform": {
+          "type": "object",
+          "properties": {
+            "cut_ratio": {"type": "number"},
+            "paper_ratio": {"type": "number"}
+          }
         }
       }
     },
-    "factual_notes": {"type": "array", "items": {"type": "string"}},
+    "new_events": {
+      "type": "array",
+      "description": "支线涌现事件（基于数值阈值动态触发）",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {"type": "string"},
+          "province": {"type": "string"},
+          "trigger_condition": {"type": "string", "description": "如 '陕西_民心<20'"},
+          "desc": {"type": "string"}
+        },
+        "required": ["type", "trigger_condition"]
+      }
+    },
+    "factual_notes": {
+      "type": "array",
+      "description": "本回合值得永久记忆的事实（写入事实记忆）",
+      "items": {"type": "string"}
+    },
     "audience_queue": {
       "type": "array",
+      "description": "各 agent 求见意愿汇总（主题模糊化以保信息隔离）",
       "items": {
         "type": "object",
         "properties": {
           "agent_id": {"type": "string"},
-          "topic": {"type": "string"},
+          "topic": {"type": "string", "description": "模糊主题，如'言边事'"},
           "urgency": {"type": "string", "enum": ["high", "normal", "low"]}
-        }
+        },
+        "required": ["agent_id", "topic"]
+      }
+    },
+    "premonitions": {
+      "type": "array",
+      "description": "即将触发事件的预兆叙事（远期模糊→近期具体→迫近明确）",
+      "items": {
+        "type": "object",
+        "properties": {
+          "event_id": {"type": "string"},
+          "level": {"type": "string", "enum": ["远期", "近期", "迫近"]},
+          "text": {"type": "string"}
+        },
+        "required": ["event_id", "level", "text"]
       }
     }
-  }
+  },
+  "required": ["narrative", "delta", "audience_queue"]
 }

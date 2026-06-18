@@ -1,80 +1,217 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>崇祯模拟器 - 早朝</title>
-    <script src="https://unpkg.com/htmx.org@2"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'SimSun', 'STSong', serif; background: #1a1a2e; color: #e0d5c1; min-height: 100vh; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 20px; display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
-        .header { grid-column: 1/-1; text-align: center; padding: 15px; border-bottom: 1px solid #4a3f2e; }
-        .header h1 { font-size: 1.5em; color: #c9a84c; }
-        .header .era { color: #8a7a5a; font-size: 0.9em; }
-        .panel { background: #16213e; border: 1px solid #2a3a5e; border-radius: 8px; padding: 15px; }
-        .panel h2 { font-size: 1em; color: #c9a84c; margin-bottom: 10px; border-bottom: 1px solid #2a3a5e; padding-bottom: 5px; }
-        .values { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px,1fr)); gap: 8px; }
-        .value-item { background: #0f3460; padding: 8px; border-radius: 4px; text-align: center; }
-        .value-item .label { font-size: 0.75em; color: #8a7a5a; }
-        .value-item .num { font-size: 1.1em; color: #e0d5c1; font-weight: bold; }
-        .edict-area { margin-top: 15px; }
-        .edict-area textarea { width: 100%; height: 80px; background: #0f3460; border: 1px solid #2a3a5e; color: #e0d5c1; padding: 10px; border-radius: 4px; font-family: inherit; resize: vertical; }
-        .edict-area button { margin-top: 8px; padding: 8px 24px; background: #c9a84c; color: #1a1a2e; border: none; border-radius: 4px; cursor: pointer; font-size: 1em; }
-        .edict-area button:hover { background: #d4b85a; }
-        .narrative { margin-top: 15px; padding: 10px; background: #0f3460; border-radius: 4px; min-height: 60px; white-space: pre-wrap; font-size: 0.9em; line-height: 1.6; }
-        .events { margin-top: 10px; }
-        .event-item { padding: 6px; background: #2a1a3e; border-left: 3px solid #c9a84c; margin-bottom: 5px; border-radius: 2px; font-size: 0.85em; }
-        .btn-advance { margin-top: 10px; padding: 6px 16px; background: #2a3a5e; color: #e0d5c1; border: 1px solid #4a5a7e; border-radius: 4px; cursor: pointer; }
-        .btn-advance:hover { background: #3a4a6e; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>崇祯多Agent社会模拟</title>
+  <style>
+    :root {
+      --bg: #1a1612;
+      --surface: #25201a;
+      --text: #e8dcc8;
+      --muted: #9a8c72;
+      --accent: #c9a96a;
+      --danger: #c75c4a;
+      --good: #6a9a6a;
+      --border: #3a3026;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "PingFang SC", "Microsoft YaHei", "STSong", serif;
+      display: grid;
+      grid-template-columns: 1fr 1.4fr;
+      gap: 1px;
+      min-height: 100vh;
+      background: var(--border);
+    }
+    .panel { background: var(--surface); padding: 1.2rem 1.4rem; overflow-y: auto; }
+    h1 { font-size: 1.3rem; margin: 0 0 0.3rem; color: var(--accent); letter-spacing: 2px; }
+    .era { color: var(--muted); font-size: 0.9rem; margin-bottom: 1rem; }
+    h2 { font-size: 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; margin-top: 1.5rem; }
+    .values { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 1rem; font-size: 0.88rem; }
+    .values div { display: flex; justify-content: space-between; }
+    .values .v { color: var(--accent); font-variant-numeric: tabular-nums; }
+    .treasury-split { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin: 0.5rem 0; }
+    .treasury-card { background: var(--bg); padding: 0.6rem; border-left: 3px solid var(--accent); }
+    .treasury-card .label { font-size: 0.78rem; color: var(--muted); }
+    .treasury-card .num { font-size: 1.1rem; color: var(--text); }
+    .event { background: var(--bg); padding: 0.5rem 0.7rem; margin: 0.3rem 0; border-left: 3px solid var(--danger); font-size: 0.82rem; }
+    .event.resolved { border-left-color: var(--good); opacity: 0.6; }
+    .premonition { background: var(--bg); padding: 0.5rem 0.7rem; margin: 0.3rem 0; border-left: 3px solid var(--accent); font-size: 0.82rem; }
+    .premonition .level { color: var(--danger); font-size: 0.72rem; margin-left: 0.5rem; }
+    .audience-item { display: flex; justify-content: space-between; align-items: center; background: var(--bg); padding: 0.4rem 0.6rem; margin: 0.3rem 0; font-size: 0.82rem; }
+    .audience-item .topic { color: var(--muted); }
+    .audience-item button { background: none; border: 1px solid var(--accent); color: var(--accent); padding: 0.15rem 0.6rem; cursor: pointer; font-size: 0.75rem; }
+    .audience-item button.decline { border-color: var(--danger); color: var(--danger); }
+    form { display: flex; gap: 0.5rem; margin: 1rem 0; }
+    input[type="text"] { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.6rem; font-size: 0.95rem; }
+    button.submit { background: var(--accent); color: var(--bg); border: none; padding: 0.6rem 1.4rem; font-size: 0.95rem; cursor: pointer; letter-spacing: 2px; }
+    button.submit:disabled { opacity: 0.5; }
+    .dialog { background: var(--bg); border: 1px solid var(--border); padding: 1rem; min-height: 200px; font-size: 0.9rem; line-height: 1.7; }
+    .dialog .turn { border-bottom: 1px dashed var(--border); padding: 0.6rem 0; }
+    .dialog .narrative { color: var(--text); }
+    .dialog .meta { color: var(--muted); font-size: 0.78rem; margin-top: 0.3rem; }
+    .delta-line { font-size: 0.8rem; color: var(--accent); margin: 0.2rem 0; }
+    .delta-line .neg { color: var(--danger); }
+    .delta-line .pos { color: var(--good); }
+    .status { font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem; }
+    .agents { font-size: 0.8rem; color: var(--muted); }
+    .agents span { display: inline-block; background: var(--bg); padding: 0.1rem 0.5rem; margin: 0.2rem 0.2rem 0 0; border: 1px solid var(--border); }
+  </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🏯 崇祯模拟器</h1>
-        <div class="era" id="era">{{ era }}</div>
-    </div>
-    <div class="container">
-        <div class="panel" style="grid-column:1">
-            <h2>📜 国势</h2>
-            <div class="values" id="values">
-                {% for k, v in values.items() %}
-                <div class="value-item">
-                    <div class="label">{{ k }}</div>
-                    <div class="num">{{ v }}</div>
-                </div>
-                {% endfor %}
-                <div class="value-item">
-                    <div class="label">太仓国库</div>
-                    <div class="num">{{ treasury }}</div>
-                </div>
-                <div class="value-item">
-                    <div class="label">内帑</div>
-                    <div class="num">{{ inner_purse }}</div>
-                </div>
-            </div>
+  <section class="panel" id="state-panel">
+    <h1>崇 祯 朝</h1>
+    <div class="era" id="era">{{ state.era }}</div>
 
-            <div class="edict-area">
-                <h2>✍️ 下诏</h2>
-                <textarea id="edictInput" placeholder="输入诏书...（如：拨银十万赈陕西）"></textarea>
-                <button hx-post="/edict" hx-trigger="click" hx-target="#narrative" hx-include="#edictInput" hx-swap="innerHTML">下诏</button>
-            </div>
-            <div class="narrative" id="narrative">等待你的第一道诏书...</div>
-        </div>
-
-        <div class="panel" style="grid-column:2">
-            <h2>⚡ 事件</h2>
-            <div class="events" id="events">
-                {% if events %}
-                {% for e in events %}
-                <div class="event-item">{{ e }}</div>
-                {% endfor %}
-                {% else %}
-                <div class="event-item" style="color:#8a7a5a;">暂无活跃事件</div>
-                {% endif %}
-            </div>
-            <button class="btn-advance" hx-post="/advance" hx-target="#narrative" hx-swap="innerHTML">推进一回合</button>
-        </div>
+    <h2>国库 / 内帑</h2>
+    <div class="treasury-split">
+      <div class="treasury-card">
+        <div class="label">太仓国库</div>
+        <div class="num" id="treasury">{{ state['values']['国库'] | int }}</div>
+      </div>
+      <div class="treasury-card">
+        <div class="label">内帑（私库）</div>
+        <div class="num" id="inner">{{ state['values']['内帑'] | int }}</div>
+      </div>
     </div>
+
+    <h2>天下大势</h2>
+    <div class="values" id="values">
+      {% for k, v in state['values'].items() %}
+        {% if k not in ['国库', '内帑'] %}
+        <div><span>{{ k }}</span><span class="v">{{ v | int }}</span></div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <h2>活跃事件</h2>
+    <div id="events">
+      {% for ae in state.active_events %}
+        <div class="event {{ 'resolved' if ae.resolved else '' }}">
+          <strong>{{ ae.name }}</strong>{% if ae.resolved %} · 已平息{% endif %}
+          <div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">{{ ae.task_desc }}</div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <h2>预兆奏报</h2>
+    <div id="premonitions">
+      {% for p in premonitions %}
+        <div class="premonition">{{ p.name }}<span class="level">{{ p.level }}</span><div style="font-size:0.75rem;color:var(--muted)">{{ p.text }}</div></div>
+      {% endfor %}
+      {% if not premonitions %}<div style="color:var(--muted);font-size:0.82rem">暂无</div>{% endif %}
+    </div>
+
+    <h2>求见队列</h2>
+    <div id="audience">
+      {% for q in state.audience_queue %}
+        <div class="audience-item" data-agent="{{ q.agent_id }}">
+          <span>{{ q.agent_name }} · <span class="topic">{{ q.topic }}</span></span>
+          <span>
+            <button onclick="audience('{{ q.agent_id }}','grant')">召见</button>
+            <button class="decline" onclick="audience('{{ q.agent_id }}','decline')">不见</button>
+          </span>
+        </div>
+      {% endfor %}
+      {% if not state.audience_queue %}<div style="color:var(--muted);font-size:0.82rem">无人求见</div>{% endif %}
+    </div>
+
+    <h2>在朝百官</h2>
+    <div class="agents" id="agents">
+      {% for a in state.active_agents %}<span>{{ a.name }}</span>{% endfor %}
+    </div>
+  </section>
+
+  <section class="panel" id="dialog-panel">
+    <h2>下诏推演</h2>
+    <form id="edict-form" onsubmit="return submitEdict(event)">
+      <input type="text" id="edict-input" placeholder="如：陕西旱灾，拨银十万两赈灾" autocomplete="off" />
+      <button class="submit" id="submit-btn" type="submit">下诏</button>
+    </form>
+    <div class="status" id="status">mock 模式：可下诏推演（真实模型需配置 .env Key）</div>
+    <div class="dialog" id="dialog">
+      <div class="turn" style="color:var(--muted)">开局：崇祯元年正月，帝登基。魏忠贤阉党专权，陕西连旱，辽东后金威胁。请下诏理政。</div>
+    </div>
+  </section>
+
+  <script>
+    function fmtDelta(applied) {
+      if (!applied || !Object.keys(applied).length) return '<div class="meta">数值无变化</div>';
+      return Object.entries(applied).map(([k,v]) => {
+        const cls = v < 0 ? 'neg' : 'pos';
+        const sign = v > 0 ? '+' : '';
+        return `<div class="delta-line">${k}: <span class="${cls}">${sign}${v | 0}</span></div>`;
+      }).join('');
+    }
+
+    async function submitEdict(e) {
+      e.preventDefault();
+      const input = document.getElementById('edict-input');
+      const btn = document.getElementById('submit-btn');
+      const edict = input.value.trim();
+      if (!edict) return false;
+      btn.disabled = true; input.value = '';
+      document.getElementById('status').textContent = '推演中…';
+      const turn = document.createElement('div'); turn.className = 'turn';
+      document.getElementById('dialog').prepend(turn);
+      turn.innerHTML = '<div class="narrative">【下诏】' + edict + '</div><div class="meta">推演中…</div>';
+      try {
+        const resp = await fetch('/edict/json', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: 'edict=' + encodeURIComponent(edict)
+        });
+        const r = await resp.json();
+        let html = '<div class="narrative">【下诏】' + edict + '</div>';
+        if (r.execution_public && r.execution_public.length) {
+          html += r.execution_public.map(e => `<div class="meta">${e.name}奏：${e.public}</div>`).join('');
+        }
+        if (r.narrative) html += `<div class="narrative" style="margin-top:0.4rem">${r.narrative}</div>`;
+        html += fmtDelta(r.delta_applied);
+        if (r.new_events_triggered && r.new_events_triggered.length) html += `<div class="meta">新事件：${r.new_events_triggered.join('、')}</div>`;
+        if (r.events_resolved && r.events_resolved.length) html += `<div class="meta" style="color:var(--good)">已平息：${r.events_resolved.join('、')}</div>`;
+        if (r.audience_queue && r.audience_queue.length) html += `<div class="meta">求见：${r.audience_queue.map(q=>q.topic).join('、')}</div>`;
+        if (r.fail_delta && Object.keys(r.fail_delta).length) html += `<div class="meta" style="color:var(--danger)">恶化：${JSON.stringify(r.fail_delta)}</div>`;
+        turn.innerHTML = html;
+        refreshState();
+      } catch (err) {
+        turn.innerHTML = '<div class="narrative">推演失败：' + err + '</div>';
+      } finally {
+        btn.disabled = false;
+        document.getElementById('status').textContent = 'mock 模式';
+      }
+      return false;
+    }
+
+    async function audience(agentId, action) {
+      const fd = new FormData(); fd.append('action', action);
+      await fetch('/audience/' + agentId, {method: 'POST', body: fd});
+      refreshState();
+    }
+
+    async function refreshState() {
+      const s = await (await fetch('/state')).json();
+      document.getElementById('era').textContent = s.era;
+      document.getElementById('treasury').textContent = (s.values['国库']|0);
+      document.getElementById('inner').textContent = (s.values['内帑']|0);
+      const vals = document.getElementById('values');
+      vals.innerHTML = Object.entries(s.values).filter(([k])=>!['国库','内帑'].includes(k))
+        .map(([k,v])=>`<div><span>${k}</span><span class="v">${v|0}</span></div>`).join('');
+      document.getElementById('events').innerHTML = (s.active_events||[]).map(ae=>
+        `<div class="event ${ae.resolved?'resolved':''}"><strong>${ae.name}</strong>${ae.resolved?' · 已平息':''}<div style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">${ae.task_desc||''}</div></div>`
+      ).join('') || '<div style="color:var(--muted);font-size:0.82rem">无</div>';
+      document.getElementById('premonitions').innerHTML = (s.premonitions||[]).map(p=>
+        `<div class="premonition">${p.name}<span class="level">${p.level}</span><div style="font-size:0.75rem;color:var(--muted)">${p.text}</div></div>`
+      ).join('') || '<div style="color:var(--muted);font-size:0.82rem">暂无</div>';
+      document.getElementById('audience').innerHTML = (s.audience_queue||[]).map(q=>
+        `<div class="audience-item"><span>${q.agent_name} · <span class="topic">${q.topic}</span></span><span><button onclick="audience('${q.agent_id}','grant')">召见</button><button class="decline" onclick="audience('${q.agent_id}','decline')">不见</button></span></div>`
+      ).join('') || '<div style="color:var(--muted);font-size:0.82rem">无人求见</div>';
+      document.getElementById('agents').innerHTML = (s.active_agents||[]).map(a=>`<span>${a.name}</span>`).join('');
+    }
+  </script>
 </body>
 </html>

@@ -1,146 +1,144 @@
-"""Web 路由：下诏/召见/国势接口（SSE 流式）。"""
+"""Web 路由：下诏（SSE 流式）/ 召见·求见 / 国势面板 / 招募池。
+
+设计要点（见计划第4节架构、第7节技术选型）：
+- FastAPI + SSE 流式：下诏后分段 yield 回合结果（叙事→数值→事件→求见→预兆）。
+- HTMX/Jinja2 极简前端：国势面板（数值/内帑国库/事件/预兆/招募池/科举）。
+"""
+
 from __future__ import annotations
 
 import asyncio
 import json
-from pathlib import Path
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 
-from src.core.world_state import WorldState
-from src.core.turn_orchestrator import TurnOrchestrator
-from src.core.historian import Historian
-from src.finance.economy import FinanceState
-from src.events.event_engine import EventEngine
-from src.llm.provider import get_provider
-
-router = APIRouter()
-templates = Jinja2Templates(directory="src/web/templates")
-
-# 全局状态（MVP 简化：单例）
-state = WorldState()
-finance = FinanceState()
-orchestrator = TurnOrchestrator()
-historian = Historian()
-event_engine = EventEngine(Path("events/historical_events.yaml"))
-provider = get_provider("mock", "mock")
+from src.core.game_engine import GameEngine
+from src.recruitment.roster import recruit_display
 
 
-@router.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    """主界面。"""
-    return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
-            "era": state.era_label(),
-            "values": state.snapshot(),
-            "events": state.active_events,
-            "treasury": finance.treasury,
-            "inner_purse": finance.inner_purse,
-        },
-    )
+def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> None:
+    """把路由注册到 app，共享 engine 与 templates。"""
+
+    @app.get("/", response_class=HTMLResponse)
+    async def index(request: Request) -> HTMLResponse:
+        snap = engine.state_snapshot()
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {
+                "state": snap,
+                "premonitions": engine.events.upcoming_premonitions(
+                    engine.state.current_month_index()
+                ),
+            },
+        )
+
+    @app.get("/state")
+    async def state() -> JSONResponse:
+        snap = engine.state_snapshot()
+        snap["premonitions"] = engine.events.upcoming_premonitions(
+            engine.state.current_month_index()
+        )
+        return JSONResponse(snap)
+
+    @app.get("/recruit")
+    async def recruit_pool() -> JSONResponse:
+        """招募池（按难度过滤可见信息）。"""
+        year = engine.state.current_year_month()[0]
+        available = engine.roster.available_for_recruit(year)
+        difficulty = engine.config.get("game", {}).get("difficulty", "normal")
+        return JSONResponse(
+            {
+                "difficulty": difficulty,
+                "candidates": [recruit_display(p, difficulty) for p in available],
+            }
+        )
+
+    @app.post("/recruit/{persona_id}")
+    async def recruit_one(persona_id: str) -> JSONResponse:
+        era = engine.state.era_label()
+        try:
+            agent = engine.roster.recruit(persona_id, engine.role_llm, era)
+            return JSONResponse({"ok": True, "name": agent.name, "id": agent.id})
+        except (KeyError, ValueError) as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    @app.post("/audience/{agent_id}")
+    async def handle_audience(agent_id: str, action: str = Form(...)) -> JSONResponse:
+        """处理求见：action=grant（召见）/ decline（拒见）。"""
+        if action == "grant":
+            engine.audience.grant(agent_id)
+            return JSONResponse({"ok": True, "granted": True})
+        out = engine.audience.decline(agent_id)
+        inst = engine.roster.get(agent_id)
+        if inst is not None:
+            inst.loyalty = max(0, inst.loyalty + out.loyalty_delta)
+        return JSONResponse({"ok": True, "granted": False, "loyalty_delta": out.loyalty_delta})
+
+    @app.post("/edict")
+    async def edict(edict: str = Form(...)) -> StreamingResponse:
+        """下诏 → 执行一回合 → SSE 流式返回各段结果。"""
+        summary = await engine.run_turn(edict)
+
+        async def event_stream():
+            # 分段 yield，模拟流式体验（真逐 token 流式在 M4/后续）
+            yield _sse("narrative", summary.narrative)
+            await asyncio.sleep(0)
+            if summary.execution_public:
+                yield _sse("execution", summary.execution_public)
+            yield _sse(
+                "delta",
+                {"applied": summary.delta_applied, "clipped": summary.delta_clipped},
+            )
+            yield _sse("finance", summary.finance_settlement)
+            if summary.new_events_triggered:
+                yield _sse("new_events", summary.new_events_triggered)
+            if summary.events_resolved:
+                yield _sse("resolved", summary.events_resolved)
+            if summary.fail_delta:
+                yield _sse("fail", summary.fail_delta)
+            if summary.audience_queue:
+                yield _sse("audience", summary.audience_queue)
+            if summary.premonitions:
+                yield _sse("premonitions", summary.premonitions)
+            if summary.task:
+                yield _sse("task", summary.task)
+            yield _sse("era", summary.era)
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    @app.post("/edict/json")
+    async def edict_json(edict: str = Form(...)) -> JSONResponse:
+        """非流式版下诏（便于脚本/测试）。"""
+        summary = await engine.run_turn(edict)
+        return JSONResponse(
+            {
+                "era": summary.era,
+                "narrative": summary.narrative,
+                "delta_applied": summary.delta_applied,
+                "delta_clipped": summary.delta_clipped,
+                "finance": summary.finance_settlement,
+                "new_events_triggered": summary.new_events_triggered,
+                "events_resolved": summary.events_resolved,
+                "fail_delta": summary.fail_delta,
+                "audience_queue": summary.audience_queue,
+                "premonitions": summary.premonitions,
+                "task": summary.task,
+                "execution_public": summary.execution_public,
+            }
+        )
+
+    @app.post("/save")
+    async def save(path: str = Form("saves/save.json")) -> JSONResponse:
+        from pathlib import Path
+
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        engine.save(path)
+        return JSONResponse({"ok": True, "path": path})
 
 
-@router.get("/state")
-async def get_state():
-    """国势数据（SSE 流式）。"""
-    return {
-        "era": state.era_label(),
-        "values": state.snapshot(),
-        "treasury": finance.treasury,
-        "inner_purse": finance.inner_purse,
-        "active_events": state.active_events,
-        "resolved_events": state.resolved_events,
-    }
-
-
-@router.post("/edict")
-async def post_edict(edict: str):
-    """下诏：编排解析 → agent 执行 → 史官推演 → 落库。"""
-    # 1. 编排解析
-    plan = orchestrator.parse_edict(edict)
-
-    # 2. 皇权处置/财政划拨直接处理
-    if plan.type == "execute":
-        return {"result": f"已赐死 {plan.target_agent}", "plan": plan.type}
-    if plan.type == "dismiss":
-        return {"result": f"已免职 {plan.target_agent}", "plan": plan.type}
-    if plan.type == "finance_transfer" and plan.amount > 0:
-        ok = finance.transfer_inner_to_treasury(plan.amount)
-        return {"result": f"内帑→国库 {plan.amount} 两", "ok": ok}
-    if plan.type == "finance_transfer" and plan.amount == 0:
-        return {"result": "公帑不可入私库（拒绝）", "plan": "rejected"}
-    if plan.type == "zonglu_reform":
-        finance.apply_zonglu_reform(plan.reform_params)
-        return {"result": "宗禄改革已施行", "params": plan.reform_params}
-
-    # 3. 普通政令：mock agent 执行 + 史官推演
-    agent_outputs = [
-        {
-            "agent_id": plan.target_agent,
-            "public": f"臣领旨：{plan.task}",
-            "private": f"此令或有益于国",
-            "want_audience": False,
-            "audience_topic": "",
-        }
-    ]
-
-    # 4. 史官推演
-    upcoming = event_engine.events_in_premonition(state)
-    h_out = historian.run(
-        state, agent_outputs, edict, upcoming, finance
-    )
-
-    # 5. delta 校验落库
-    applied, errors = state.validate_delta(h_out.delta)
-    state.apply(applied)
-
-    # 6. 事件判定
-    resolved, _ = event_engine.check_resolutions(state)
-    event_engine.apply_fail_consequences(state)
-
-    # 7. 时间推进
-    state.advance("month")
-
-    return {
-        "plan": plan.type,
-        "narrative": h_out.narrative,
-        "delta": applied,
-        "errors": errors,
-        "resolved_events": resolved,
-        "state": state.snapshot(),
-    }
-
-
-@router.post("/audience/{agent_id}")
-async def handle_audience(agent_id: str, action: str = "grant"):
-    """处理求见（见/不见）。"""
-    if action == "grant":
-        return {
-            "result": f"召见 {agent_id}",
-            "message": f"{agent_id} 奏曰：臣有本奏...",
-        }
-    return {"result": f"不见 {agent_id}", "consequence": "忠诚-1"}
-
-
-@router.post("/advance")
-async def advance_turn():
-    """推进一回合。"""
-    # 触发到期事件
-    event_engine.trigger_events(state)
-    # 财政结算
-    settlement = finance.settle()
-    state.apply(settlement["delta"])
-    # 事件判定
-    event_engine.check_resolutions(state)
-    event_engine.apply_fail_consequences(state)
-    # 时间推进
-    state.advance("month")
-    return {
-        "era": state.era_label(),
-        "settlement": settlement,
-        "state": state.snapshot(),
-    }
+def _sse(event_type: str, data) -> str:
+    return f"data: {json.dumps({'type': event_type, 'data': data}, ensure_ascii=False)}\n\n"

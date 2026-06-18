@@ -1,96 +1,181 @@
-"""编排 agent：解析诏书→分类→分派/处置/识别类型。
+"""编排 agent（Orchestrator）：解析诏书 → 激活子集 → 拜访关系 → 调度。
 
-编排 = 路由层，不推演数值。负责：
-- 解析自然语言诏书为可执行指令
-- 识别皇权处置（赐死/免职）、财政划拨（内帑→国库）、宗禄改革
-- 普通政令解析为任务对象
-- 主持早朝流程控制
+设计要点（见计划第6节"编排 agent"）：
+- 路由层：解析诏书 → 分类 → 分派/处置/识别类型。不推演数值（史官职责）。
+- 皇权处置识别（赐死/免职）→ 直接处置，不经死亡危机 resolve。
+- 财政划拨识别（内帑→国库允许；国库→内帑拒绝/触发哗然）。
+- 任务解析：把诏书解析为任务对象（目标角色/影响数值/期限/成功条件）。
+- 早朝流程控制：开场呈上 → 排序请奏 → agent 论辩 → 玩家介入 → 朝会结束。
 """
+
 from __future__ import annotations
 
-import json
-import re
 from dataclasses import dataclass, field
-from typing import Optional
+from pathlib import Path
+
+from src.agents.base_agent import BaseAgent
+from src.llm.provider import LLMProvider, Message
+
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+
+def _load_orchestrator_prompt() -> str:
+    return (_PROMPTS_DIR / "orchestrator.md").read_text(encoding="utf-8")
+
+
+ORCHESTRATOR_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "action": {
+            "type": "string",
+            "enum": ["execute", "dismiss", "execute_death", "finance_transfer", "court_only", "noop"],
+        },
+        "dispatch_targets": {"type": "array", "items": {"type": "string"}},
+        "visits": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "from": {"type": "string"},
+                    "to": {"type": "string"},
+                    "purpose": {"type": "string"},
+                },
+            },
+        },
+        "activation_order": {"type": "array", "items": {"type": "string"}},
+        "task": {
+            "type": "object",
+            "properties": {
+                "target_agent": {"type": "string"},
+                "content": {"type": "string"},
+                "affects": {"type": "array", "items": {"type": "string"}},
+                "deadline": {"type": "string"},
+                "success_condition": {"type": "string"},
+            },
+        },
+        "finance_action": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": [
+                        "inner_to_treasury",
+                        "treasury_to_inner",
+                        "tax_adjust",
+                        "expense_adjust",
+                        "zonglu_reform",
+                    ],
+                },
+                "amount": {"type": "number"},
+                "detail": {"type": "string"},
+            },
+        },
+        "reason": {"type": "string"},
+    },
+    "required": ["action", "dispatch_targets"],
+}
 
 
 @dataclass
-class EdictPlan:
-    """编排解析诏书后的分派计划。"""
-    type: str  # task | execute | dismiss | finance_transfer | zonglu_reform | unknown
-    target_agent: Optional[str] = None
-    task: Optional[str] = None
-    affects: list[str] = field(default_factory=list)
-    deadline: Optional[str] = None
-    success_condition: Optional[str] = None
-    amount: Optional[int] = None  # 财政划拨金额
-    reform_params: dict = field(default_factory=dict)  # 宗禄改革参数
-    raw_edict: str = ""
+class OrchestratorPlan:
+    """编排解析诏书的分派/处置/财政计划。"""
+
+    action: str = "noop"
+    dispatch_targets: list[str] = field(default_factory=list)
+    visits: list[dict] = field(default_factory=list)
+    activation_order: list[str] = field(default_factory=list)
+    task: dict | None = None
+    finance_action: dict | None = None
+    target: str | None = None  # 处置对象（赐死/免职）
+    reason: str = ""
+
+    @property
+    def is_dismiss(self) -> bool:
+        return self.action == "dismiss"
+
+    @property
+    def is_execute_death(self) -> bool:
+        return self.action == "execute_death"
+
+    @property
+    def is_finance_transfer(self) -> bool:
+        return self.action == "finance_transfer"
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "OrchestratorPlan":
+        task = d.get("task")
+        fin = d.get("finance_action")
+        return cls(
+            action=d.get("action", "noop"),
+            dispatch_targets=list(d.get("dispatch_targets", [])),
+            visits=list(d.get("visits", [])),
+            activation_order=list(d.get("activation_order", [])),
+            task=task if isinstance(task, dict) and task else None,
+            finance_action=fin if isinstance(fin, dict) and fin else None,
+            target=d.get("target") or (task.get("target_agent") if isinstance(task, dict) else None),
+            reason=d.get("reason", ""),
+        )
 
 
 class TurnOrchestrator:
-    """回合编排器。"""
+    """编排 agent。"""
 
-    def parse_edict(self, edict: str) -> EdictPlan:
-        """解析自然语言诏书，返回分派计划。"""
-        plan = EdictPlan(raw_edict=edict)
+    def __init__(
+        self,
+        llm: LLMProvider,
+        *,
+        config: dict | None = None,
+        prompt: str | None = None,
+        schema: dict | None = None,
+    ) -> None:
+        self.llm = llm
+        self.config = config or {}
+        self.prompt = prompt or _load_orchestrator_prompt()
+        self.schema = schema or ORCHESTRATOR_SCHEMA
 
-        # 皇权处置识别
-        if m := re.search(r"(?:赐死|处死|赐|杀)\s*(.+)", edict):
-            plan.type = "execute"
-            plan.target_agent = m.group(1).strip()
-            return plan
-        if m := re.search(r"(?:免职|罢免|革职|罢)\s*(.+)", edict):
-            plan.type = "dismiss"
-            plan.target_agent = m.group(1).strip()
-            return plan
+    def _build_system(
+        self,
+        era: str,
+        available_agents: str,
+        situation: str,
+    ) -> str:
+        return (
+            self.prompt.replace("{{era}}", era)
+            .replace("{{available_agents}}", available_agents)
+            .replace("{{situation}}", situation)
+        )
 
-        # 财政划拨识别
-        if re.search(r"(?:内帑|内库|内承运库).*(?:充|拨|划|转).*(?:国库|太仓)", edict):
-            plan.type = "finance_transfer"
-            m = re.search(r"(\d+)\s*(?:万|两|银)", edict)
-            plan.amount = int(m.group(1)) * 10000 if m else 100000
-            return plan
-        if re.search(r"(?:国库|太仓).*(?:入|拨|划).*(?:内帑|内库)", edict):
-            plan.type = "finance_transfer"
-            plan.amount = 0  # 拒绝
-            return plan
+    async def parse_edict(
+        self,
+        edict: str,
+        *,
+        turn: int,
+        available_agents: list[dict],
+        situation: str,
+        era: str,
+        max_retries: int = 2,
+    ) -> OrchestratorPlan:
+        """解析诏书为分派/处置/财政计划。available_agents 为 [{id,name,skills,faction}]。"""
+        agents_text = "\n".join(
+            f"- {a['id']}（{a.get('name', '')}，擅长：{'、'.join(a.get('skills', []))}，派系：{a.get('faction', '')}）"
+            for a in available_agents
+        ) or "（无可用 agent）"
+        system = self._build_system(era, agents_text, situation)
+        out = await self.llm.chat_json(
+            [Message("user", f"诏书：{edict}\n\n请解析为可执行的 JSON 计划。")],
+            schema=self.schema,
+            system=system,
+            max_retries=max_retries,
+        )
+        return OrchestratorPlan.from_dict(out)
 
-        # 宗禄改革识别
-        if re.search(r"(?:宗室|宗禄|岁禄|宗藩).*(?:削减|折钞|限制|查革|改革)", edict):
-            plan.type = "zonglu_reform"
-            if re.search(r"削减|减", edict):
-                m = re.search(r"(\d+)\s*成", edict)
-                plan.reform_params["cut_ratio"] = int(m.group(1)) / 10 if m else 0.3
-            if re.search(r"折钞", edict):
-                plan.reform_params["zhechao"] = True
-            return plan
+    @staticmethod
+    def select_speaking_agents(plan: OrchestratorPlan, active_agents: list[BaseAgent]) -> list[BaseAgent]:
+        """根据 plan.dispatch_targets 从在朝 agent 中选发言子集（事件驱动激活相关子集）。
 
-        # 普通政令 → 任务
-        plan.type = "task"
-        plan.task = edict
-        # 识别目标角色
-        if "户部" in edict or "财政" in edict or "赋税" in edict or "赈" in edict:
-            plan.target_agent = "minister_finance"
-            plan.affects = ["国库", "田赋"]
-        elif "兵部" in edict or "军" in edict or "边" in edict or "辽东" in edict:
-            plan.target_agent = "minister_war"
-            plan.affects = ["军力", "军心"]
-        elif "民" in edict or "百姓" in edict or "陕西" in edict:
-            plan.target_agent = "common_people"
-            plan.affects = ["民心", "陕西_民心"]
-        else:
-            plan.target_agent = "minister_finance"
-            plan.affects = ["国库"]
-
-        # 期限
-        m = re.search(r"(\d+)\s*(?:月|年|日)", edict)
-        if m:
-            plan.deadline = f"崇祯{int(m.group(1))}年"
-        return plan
-
-    def activate_subset(self, plan: EdictPlan, available_agents: list[str]) -> list[str]:
-        """按事件相关性激活 agent 子集（成本控制）。"""
-        if plan.target_agent and plan.target_agent in available_agents:
-            return [plan.target_agent]
-        return available_agents[:1]
+        未指定 dispatch_targets 时返回全部在朝 agent（默认早朝全员列席）。
+        """
+        if not plan.dispatch_targets:
+            return list(active_agents)
+        targets = set(plan.dispatch_targets)
+        return [a for a in active_agents if a.id in targets]

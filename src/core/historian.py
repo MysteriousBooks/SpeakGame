@@ -1,88 +1,150 @@
-"""史官 agent：推演效果 delta + 财政结算 + 叙事 + 触发事件 + 汇总求见 + 生成预兆。
+"""史官 agent：收公开层 → 推演 delta → 财政结算 → 叙事 → 预兆 → 求见汇总。
 
-史官 = 推演层，不解析分派。负责：
-- 收集各 agent 公开层输出
-- 推演数值 delta（财政/军事/民政/人事类政令效果）
-- 财政结算（年景/战事/民变调制）
-- 生成回合叙事 + 支线涌现事件建议
-- 生成下回合预兆 + 汇总求见队列
+设计要点（见计划第6节"史官 agent"）：
+- 推演层：推演效果 delta + 财政结算 + 叙事 + 触发事件 + 汇总求见 + 生成预兆。不解析分派。
+- 历史与性格 grounding 硬约束：基于当前时间点史实背景与明末时代边界推演。
+- 防数值崩：guided thinking 强制结构化推理；delta 走代码 max_delta 裁剪 + min/max clamp。
+- 输出符合 delta_schema.json 的结构化 JSON。
 """
+
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Optional
+from pathlib import Path
 
-from src.core.world_state import WorldState
-from src.finance.economy import FinanceState
+from src.llm.provider import LLMProvider, Message
+
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+
+def _load_delta_schema() -> dict:
+    with open(_PROMPTS_DIR / "delta_schema.json", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _load_historian_prompt() -> str:
+    return (_PROMPTS_DIR / "historian.md").read_text(encoding="utf-8")
 
 
 @dataclass
-class HistorianOutput:
-    """史官输出。"""
+class TurnResult:
+    """史官一回合推演结果。"""
+
     narrative: str = ""
     delta: dict = field(default_factory=dict)
+    finance_delta: dict = field(default_factory=dict)
     new_events: list[dict] = field(default_factory=list)
     factual_notes: list[str] = field(default_factory=list)
     audience_queue: list[dict] = field(default_factory=list)
+    premonitions: list[dict] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "TurnResult":
+        return cls(
+            narrative=str(d.get("narrative", "")),
+            delta=dict(d.get("delta", {})),
+            finance_delta=dict(d.get("finance_delta", {})),
+            new_events=list(d.get("new_events", [])),
+            factual_notes=list(d.get("factual_notes", [])),
+            audience_queue=list(d.get("audience_queue", [])),
+            premonitions=list(d.get("premonitions", [])),
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "narrative": self.narrative,
+            "delta": self.delta,
+            "finance_delta": self.finance_delta,
+            "new_events": self.new_events,
+            "factual_notes": self.factual_notes,
+            "audience_queue": self.audience_queue,
+            "premonitions": self.premonitions,
+        }
 
 
 class Historian:
     """史官 agent。"""
 
-    def run(
+    def __init__(
         self,
-        state: WorldState,
-        agent_outputs: list[dict],
-        edict: str = "",
-        upcoming_events: Optional[list[dict]] = None,
-        finance: Optional[FinanceState] = None,
-        year_景: str = "平",
-        war_factor: float = 1.0,
-        rebellion_factor: float = 1.0,
-    ) -> HistorianOutput:
-        """执行史官推演。"""
-        output = HistorianOutput()
+        llm: LLMProvider,
+        *,
+        config: dict | None = None,
+        prompt: str | None = None,
+        schema: dict | None = None,
+    ) -> None:
+        self.llm = llm
+        self.config = config or {}
+        self.prompt = prompt or _load_historian_prompt()
+        self.schema = schema or _load_delta_schema()
 
-        # 1. 收集 agent 公开层
-        public_layer = []
-        for ao in agent_outputs:
-            if isinstance(ao, dict) and "public" in ao:
-                public_layer.append(ao["public"])
-            if isinstance(ao, dict) and "want_audience" in ao and ao["want_audience"]:
-                output.audience_queue.append({
-                    "agent_id": ao.get("agent_id", "unknown"),
-                    "topic": ao.get("audience_topic", "有本奏"),
-                    "urgency": "normal",
-                })
+    def _build_system(
+        self,
+        era: str,
+        public_outputs: str,
+        world_snapshot: dict,
+        finance_params,
+        edict_and_dispatch: str,
+        upcoming_events: str,
+    ) -> str:
+        prompt = self.prompt
+        return (
+            prompt.replace("{{era}}", era)
+            .replace("{{public_outputs}}", public_outputs)
+            .replace("{{world_snapshot}}", json.dumps(world_snapshot, ensure_ascii=False, indent=2))
+            .replace(
+                "{{finance_params}}",
+                json.dumps(_finance_params_snapshot(finance_params), ensure_ascii=False, indent=2),
+            )
+            .replace("{{edict_and_dispatch}}", edict_and_dispatch)
+            .replace("{{upcoming_events}}", upcoming_events)
+        )
 
-        # 2. 财政结算
-        if finance:
-            settlement = finance.settle(year_景, war_factor, rebellion_factor)
-            output.delta.update(settlement["delta"])
-            output.narrative += f"财政结算：收入{settlement['收入']}，支出{settlement['支出']}，净{settlement['净']}。\n"
+    async def deduce(
+        self,
+        *,
+        public_outputs: str,
+        world_snapshot: dict,
+        finance_params,
+        edict_and_dispatch: str,
+        upcoming_events: str,
+        era: str,
+        max_retries: int = 2,
+    ) -> TurnResult:
+        """收集公开层，推演 delta/财政/叙事/事件/求见/预兆。"""
+        system = self._build_system(
+            era, public_outputs, world_snapshot, finance_params, edict_and_dispatch, upcoming_events
+        )
+        out = await self.llm.chat_json(
+            [Message("user", "请基于以上信息推演本回合结果，输出符合 schema 的 JSON。")],
+            schema=self.schema,
+            system=system,
+            max_retries=max_retries,
+        )
+        return TurnResult.from_dict(out)
 
-        # 3. 推演 delta（基于政令类型）
-        if "赈" in edict or "拨银" in edict:
-            output.delta["国库"] = output.delta.get("国库", 0) - 100_000
-            output.delta["陕西_民心"] = output.delta.get("陕西_民心", 0) + 8
-            output.factual_notes.append(f"帝拨银赈陕西（{state.era_label()}）")
-        elif "加征" in edict or "辽饷" in edict:
-            output.delta["民心"] = output.delta.get("民心", 0) - 5
-            output.delta["国库"] = output.delta.get("国库", 0) + 50_000
-        elif "军" in edict or "兵" in edict or "整饬" in edict:
-            output.delta["军力"] = output.delta.get("军力", 0) + 5
-            output.delta["军心"] = output.delta.get("军心", 0) + 3
-            output.delta["国库"] = output.delta.get("国库", 0) - 30_000
+    @staticmethod
+    def validate_delta(delta: dict, bounds: dict) -> tuple[bool, list[str]]:
+        """校验 delta 是否都在 bounds 中（供重推判断）。实际裁剪由 world_state.apply_delta 完成。"""
+        errors: list[str] = []
+        for key, change in delta.items():
+            if key not in bounds:
+                errors.append(f"未知数值项: {key}")
+                continue
+            if not isinstance(change, (int, float)):
+                errors.append(f"数值非数字: {key}={change!r}")
+        return (len(errors) == 0, errors)
 
-        # 4. 生成叙事
-        output.narrative += f"诏书已下，{state.era_label()}。"
-        if output.delta:
-            output.narrative += f"数值变化：{json.dumps(output.delta, ensure_ascii=False)}。"
 
-        # 5. 预兆
-        if upcoming_events:
-            for ev in upcoming_events:
-                output.narrative += f"【预兆】{ev.get('background', '')[:30]}..."
-
-        return output
+def _finance_params_snapshot(params) -> dict:
+    """把 FinanceParams 转为可序列化快照。"""
+    try:
+        return {
+            "income_monthly": params.income_monthly,
+            "expense_monthly": params.expense_monthly,
+            "tax_rates": params.tax_rates,
+            "zonglu_reform": params.zonglu_reform,
+        }
+    except AttributeError:
+        return dict(params) if params else {}

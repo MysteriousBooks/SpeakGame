@@ -1,0 +1,17 @@
+# 兵部尚书（开局内阁，active 在朝，不需招募）
+# 用明末史实人物王在晋（崇祯初任兵部尚书，稳重主守）。
+
+id: minister_war
+name: 王在晋
+courtesy: 明初
+faction: 主守派
+skills: [军事, 辽防, 筹饷]
+historical_alignment: 中性
+personality: 稳重持重，主守退敌，惮于轻进，与主战派时有分歧
+relations: {同僚: 户部尚书}
+recruitment_condition: 开局内阁
+born_year: 1565
+historical_death_year: 1643
+death_cause:
+  type: natural
+  desc: 病亡

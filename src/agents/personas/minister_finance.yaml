@@ -1,9 +1,18 @@
-# 户部尚书（开局内阁，财政立场）
-name: 户部尚书
-agent_id: minister_finance
-title: 户部尚书
-personality: 循吏、务实、谨慎
-faction: 中立
-skills: [财政, 政务, 田赋]
-loyalty: 70
-born_year: 1580
+# 户部尚书（开局内阁，active 在朝，不需招募）
+# 计划第3节"开局内阁"：MVP 开局即有户部尚书、兵部尚书在朝。用明末史实人物毕自严（崇祯初任户部尚书，理财循吏）。
+
+id: minister_finance
+name: 毕自严
+courtesy: 景曾
+faction: 循吏系
+skills: [理财, 户部, 赋税, 节用]
+historical_alignment: 正派
+personality: 老成持重，精于会计，敢于直言财政困窘，主张节流裁冗
+relations: {同僚: 兵部尚书}
+recruitment_condition: 开局内阁
+# 开局内阁无史实死因约束（按平均寿命自然死亡）
+born_year: 1569
+historical_death_year: 1638
+death_cause:
+  type: natural
+  desc: 病亡

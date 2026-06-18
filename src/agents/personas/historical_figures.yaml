@@ -1,78 +1,108 @@
-# 真实历史角色库（可招募的历史人物）
-# 仅简单难度展示 historical_alignment 和 death_cause
-# 按当前年份过滤（born_year <= 当前年 < historical_death_year）
+# 历史角色库（真实明末人物，可被招募为朝廷官员）
+# 结构见计划第3节"招募系统"。元信息（death_cause / historical_alignment）系统持有，不注入 agent 提示词。
 
-- id: yuan_chonghuan
-  name: 袁崇焕
-  courtesy: 元素
-  born_year: 1584
-  historical_death_year: 1630
-  death_cause:
-    type: execution
-    desc: 崇祯三年被凌迟（己巳之变后被指通敌）
-  faction: 辽东系
-  skills: [军事, 辽防, 守城]
-  historical_alignment: 争议
-  personality: 刚烈敢言、自负
-  relations: {政敌: 阉党余孽}
-  recruitment_condition: 辽东局势紧张时可召
+figures:
+  - id: yuan_chonghuan
+    name: 袁崇焕
+    courtesy: 元素
+    born_year: 1584
+    historical_death_year: 1630
+    death_cause:
+      type: execution
+      desc: 崇祯三年被凌迟（己巳之变后被指通敌）
+    faction: 辽东系
+    skills: [军事, 辽防, 守城]
+    historical_alignment: 争议
+    personality: 刚烈敢言、自负，擅守城，与朝中文臣不睦
+    relations: {政敌: 阉党余孽, 恩主: 孙承宗}
+    recruitment_condition: 辽东局势紧张时可召
 
-- id: sun_chuanting
-  name: 孙传庭
-  courtesy: 伯雅
-  born_year: 1593
-  historical_death_year: 1643
-  death_cause:
-    type: battle
-    desc: 崇祯十六年与李自成军作战阵亡
-  faction: 秦军系
-  skills: [军事, 剿匪, 练兵]
-  historical_alignment: 正派
-  personality: 忠勇善战、直言
-  relations: {}
-  recruitment_condition: 流寇危机时可召
+  - id: sun_chuanting
+    name: 孙传庭
+    courtesy: 伯雅
+    born_year: 1593
+    historical_death_year: 1643
+    death_cause:
+      type: battle
+      desc: 崇祯十六年潼关战死
+    faction: 秦军系
+    skills: [军事, 练兵, 剿匪]
+    historical_alignment: 正派
+    personality: 刚方自许、果决，善练秦军，恃勇轻进
+    relations: {同僚: 洪承畴}
+    recruitment_condition: 流寇初起时可召
 
-- id: hong_chengchou
-  name: 洪承畴
-  courtesy: 亨九
-  born_year: 1593
-  historical_death_year: 1665
-  death_cause:
-    type: natural
-    desc: 自然死亡
-  faction: 文官系
-  skills: [军事, 政务, 谋略]
-  historical_alignment: 争议
-  personality: 深沉老练、善权变
-  relations: {}
-  recruitment_condition: 正常可召
+  - id: hong_chengchou
+    name: 洪承畴
+    courtesy: 亨九
+    born_year: 1593
+    historical_death_year: 1665
+    death_cause:
+      type: natural
+      desc: 降清后病亡（明末体系内崇祯朝任用至松锦之战）
+    faction: 辽东系
+    skills: [军事, 围剿, 谋略]
+    historical_alignment: 争议
+    personality: 沉稳持重，善统筹，松锦之战兵败被俘
+    relations: {同僚: 孙传庭}
+    recruitment_condition: 围剿流寇或辽东战事时可召
 
-- id: lu_xiangsheng
-  name: 卢象升
-  courtesy: 建斗
-  born_year: 1600
-  historical_death_year: 1639
-  death_cause:
-    type: battle
-    desc: 崇祯十二年与清军战死
-  faction: 明军系
-  skills: [军事, 侠义, 治军]
-  historical_alignment: 正派
-  personality: 忠烈义勇、体恤士卒
-  relations: {}
-  recruitment_condition: 危急时可召
+  - id: lu_xiangsheng
+    name: 卢象升
+    courtesy: 建斗
+    born_year: 1600
+    historical_death_year: 1639
+    death_cause:
+      type: battle
+      desc: 崇祯十一年巨鹿贾庄战死
+    faction: 天雄军系
+    skills: [军事, 激励, 剿匪]
+    historical_alignment: 正派
+    personality: 忠烈刚介，治军严，主战抗清
+    relations: {政敌: 杨嗣昌主和派}
+    recruitment_condition: 京畿危急或剿匪时可召
 
-- id: yang_sichang
-  name: 杨嗣昌
-  courtesy: 文弱
-  born_year: 1588
-  historical_death_year: 1641
-  death_cause:
-    type: illness
-    desc: 崇祯十四年忧惧病亡
-  faction: 文官系
-  skills: [政务, 谋略, 文学]
-  historical_alignment: 中性
-  personality: 善谋略、刚愎
-  relations: {}
-  recruitment_condition: 正常可召
+  - id: yang_sichang
+    name: 杨嗣昌
+    courtesy: 文弱
+    born_year: 1588
+    historical_death_year: 1641
+    death_cause:
+      type: illness
+      desc: 崇祯十四年忧惧病亡
+    faction: 主和派
+    skills: [筹略, 政治, 财政]
+    historical_alignment: 争议
+    personality: 善谈兵、主抚议和，刚愎自用
+    relations: {政敌: 卢象升主战派}
+    recruitment_condition: 流寇势大需统筹时可召
+
+  - id: wen_tiren
+    name: 温体仁
+    courtesy: 元卿
+    born_year: 1573
+    historical_death_year: 1639
+    death_cause:
+      type: illness
+      desc: 病亡
+    faction: 独相派
+    skills: [权术, 党争, 揣摩]
+    historical_alignment: 反派
+    personality: 阴柔专擅，善排挤，揣摩帝意
+    relations: {政敌: 周延儒}
+    recruitment_condition: 朝堂党争激烈时在朝
+
+  - id: zhou_yanru
+    name: 周延儒
+    courtesy: 玉绳
+    born_year: 1593
+    historical_death_year: 1643
+    death_cause:
+      type: execution
+      desc: 崇祯十四年赐死
+    faction: 阁党
+    skills: [权术, 财政, 结党]
+    historical_alignment: 争议
+    personality: 巧言善谋，贪墨，结党营私
+    relations: {政敌: 温体仁}
+    recruitment_condition: 内阁缺人时可召

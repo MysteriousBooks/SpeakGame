@@ -1,119 +1,184 @@
-"""招募/科举系统：角色库加载 + 按年份过滤 + 角色状态机 + 科举。"""
+"""角色注册表：按当前年份过滤在世可招募 + 角色状态机 + 难度可见性。
+
+设计要点（见计划第3节"招募系统""角色状态机""难度等级"）：
+- 状态机：available（在野可招募）→ active（在朝任官，是 agent）
+         ↻ dismissed（免职在野，可重新启用）/ dead（已故）。
+- 按当前游戏年份过滤在世角色（born_year <= 当前年 < historical_death_year，且未招募/已死）。
+- 难度等级控制招募界面信息可见性（easy 显示正反派/擅长/死因；normal 仅擅长；hard 零剧透）。
+- dismissed 复用带历史记忆与怨气；dead 角色移除 agent。
+"""
+
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Optional
+from dataclasses import dataclass, field
 
-import yaml
+from src.agents.base_agent import BaseAgent, PersonaCard, load_historical_figures
+from src.llm.provider import LLMProvider
+from src.memory.factual_memory import FactualMemory
+from src.memory.narrative_memory import NarrativeMemory
+
+# 角色状态
+AVAILABLE = "available"
+ACTIVE = "active"
+DISMISSED = "dismissed"
+DEAD = "dead"
+
+VALID_STATUSES = {AVAILABLE, ACTIVE, DISMISSED, DEAD}
 
 
-ROSTER_STATUS = ["available", "active", "dismissed", "dead"]
+@dataclass
+class AgentInstance:
+    """一个角色实例：人格卡 + 状态 + 两层记忆（状态机各态均保留记忆）+ per-agent 属性。"""
+
+    persona: PersonaCard
+    status: str = AVAILABLE
+    factual: FactualMemory = field(default_factory=FactualMemory)
+    narrative: NarrativeMemory = field(default_factory=NarrativeMemory)
+    agent: BaseAgent | None = None  # active 时持有可对话 agent
+    # per-agent 属性（非全局数值，存角色状态）
+    loyalty: int = 70  # 官员忠诚 0~100
+    dissatisfaction: int = 0  # 不满 0~100
+    safety: int = 50  # 安全度 0~100（死亡危机 resolve_conditions 用）
+
+    def to_dict(self) -> dict:
+        return {
+            "persona_id": self.persona.id,
+            "status": self.status,
+            "factual": self.factual.to_dict(),
+            "narrative": self.narrative.to_dict(),
+            "loyalty": self.loyalty,
+            "dissatisfaction": self.dissatisfaction,
+            "safety": self.safety,
+        }
+
+
+def recruit_display(persona: PersonaCard, difficulty: str) -> dict:
+    """按难度等级返回招募界面可见信息（hard 零剧透）。"""
+    info: dict = {"id": persona.id, "name": persona.name}
+    if persona.recruitment_condition:
+        info["recruitment_condition"] = persona.recruitment_condition
+    if difficulty == "easy":
+        info["historical_alignment"] = persona.historical_alignment
+        info["skills"] = list(persona.skills)
+        info["death_cause"] = dict(persona.death_cause)
+    elif difficulty == "normal":
+        info["skills"] = list(persona.skills)
+    # hard: 仅 id/name/condition
+    return info
 
 
 class Roster:
-    """角色库管理：加载、年份过滤、状态机、招募。"""
+    """角色注册表：管理所有角色（历史 + 虚构）的状态机与记忆。"""
 
-    def __init__(self, figures_path: Path):
-        raw = yaml.safe_load(figures_path.read_text(encoding="utf-8"))
-        self.figures: list[dict] = raw if isinstance(raw, list) else []
-        self._by_id = {f["id"]: f for f in self.figures}
-        # 角色状态存储 (id -> status)
-        self._status: dict[str, str] = {}
-
-    def filter_alive(self, year: int) -> list[dict]:
-        """按当前年份返回仍在世的角色（born ≤ year < death）。"""
-        result = []
-        for f in self.figures:
-            by = f.get("born_year", 0)
-            dy = f.get("historical_death_year", 9999)
-            if by <= year < dy:
-                result.append(f)
-        return result
-
-    def filter_recruitable(self, year: int) -> list[dict]:
-        """返回当前可招募的角色（在世 + available/dismissed 状态）。"""
-        alive = self.filter_alive(year)
-        return [
-            f
-            for f in alive
-            if self._status.get(f["id"], "available") in (
-                "available",
-                "dismissed",
-            )
-        ]
-
-    def recruit(self, figure_id: str) -> bool:
-        """招募角色（available/dismissed → active）。"""
-        status = self._status.get(figure_id, "available")
-        if status not in ("available", "dismissed"):
-            return False
-        self._status[figure_id] = "active"
-        return True
-
-    def dismiss(self, figure_id: str) -> bool:
-        """免职（active → dismissed）。"""
-        if self._status.get(figure_id) != "active":
-            return False
-        self._status[figure_id] = "dismissed"
-        return True
-
-    def execute(self, figure_id: str) -> bool:
-        """赐死（任意状态 → dead）。"""
-        self._status[figure_id] = "dead"
-        return True
-
-    def get_status(self, figure_id: str) -> str:
-        return self._status.get(figure_id, "available")
-
-    def get_figure(self, figure_id: str) -> Optional[dict]:
-        return self._by_id.get(figure_id)
-
-    def get_active_agents(self) -> list[str]:
-        return [
-            fid for fid, st in self._status.items() if st == "active"
-        ]
-
-
-class ExamSystem:
-    """科举系统（乡试→会试→殿试，玩家授官）。"""
-
-    def __init__(self, cycle_years: int = 3):
-        self.cycle_years = cycle_years
-        self._next_year = 3  # 崇祯三年首科
-
-    def is_exam_year(self, year: int) -> bool:
-        return year >= self._next_year and (
-            year - self._next_year
-        ) % self.cycle_years == 0
-
-    def generate_jinshi(self, count: int = 3) -> list[dict]:
-        """生成进士列表（mock 版本）。"""
-        names = [
-            "张慎言",
-            "李国英",
-            "王铎",
-            "陈演",
-            "吴甡",
-            "黄道周",
-            "刘宗周",
-        ]
-        return [
-            {
-                "id": f"jinshi_{i}",
-                "name": names[i % len(names)],
-                "籍贯": "顺天府",
-                "答卷": "策论…",
-                "能力倾向": "政务",
-                "背景": "书香门第",
-            }
-            for i in range(count)
-        ]
-
-    def appoint(
+    def __init__(
         self,
-        figure_id: str,
-        roster: Roster,
-        position: str,
-    ) -> bool:
-        """授官→新增 agent。"""
-        return roster.recruit(figure_id)
+        config: dict,
+        *,
+        historical_figures: list[PersonaCard] | None = None,
+    ) -> None:
+        self.config = config
+        self.instances: dict[str, AgentInstance] = {}
+        figures = historical_figures if historical_figures is not None else load_historical_figures()
+        for persona in figures:
+            self.instances[persona.id] = AgentInstance(persona=persona, status=AVAILABLE)
+
+    @property
+    def difficulty(self) -> str:
+        return self.config.get("game", {}).get("difficulty", "normal")
+
+    # ---------- 查询 ----------
+    def available_for_recruit(self, game_year: int) -> list[PersonaCard]:
+        """按当前游戏年份（崇祯纪年）过滤在世且 available 的可招募角色。
+
+        历史角色卡用真实公元年（如袁崇焕 1584-1630），内部转换为真实年比较。
+        """
+        real_year = 1627 + game_year
+        return [
+            inst.persona
+            for inst in self.instances.values()
+            if inst.status == AVAILABLE and inst.persona.is_alive_in(real_year)
+        ]
+
+    def get(self, persona_id: str) -> AgentInstance | None:
+        return self.instances.get(persona_id)
+
+    def active_instances(self) -> list[AgentInstance]:
+        return [inst for inst in self.instances.values() if inst.status == ACTIVE]
+
+    def active_agents(self) -> list[BaseAgent]:
+        return [inst.agent for inst in self.active_instances() if inst.agent is not None]
+
+    def status_of(self, persona_id: str) -> str | None:
+        inst = self.instances.get(persona_id)
+        return inst.status if inst else None
+
+    # ---------- 状态转换 ----------
+    def make_agent(self, persona_id: str, llm: LLMProvider, era: str) -> BaseAgent:
+        """用该角色已存的两层记忆构造可对话 BaseAgent。"""
+        inst = self.instances.get(persona_id)
+        if inst is None:
+            raise KeyError(f"未知角色: {persona_id}")
+        return BaseAgent(inst.persona, inst.factual, inst.narrative, llm, era=era)
+
+    def recruit(self, persona_id: str, llm: LLMProvider, era: str) -> BaseAgent:
+        """招募：available -> active。返回可对话 agent。"""
+        inst = self.instances.get(persona_id)
+        if inst is None:
+            raise KeyError(f"未知角色: {persona_id}")
+        if inst.status not in (AVAILABLE, DISMISSED):
+            raise ValueError(f"{persona_id} 当前状态 {inst.status}，不可招募（需 available/dismissed）")
+        inst.status = ACTIVE
+        inst.agent = self.make_agent(persona_id, llm, era)
+        return inst.agent
+
+    def reinstate(self, persona_id: str, llm: LLMProvider, era: str) -> BaseAgent:
+        """重新启用：dismissed -> active（复用历史记忆与怨气）。"""
+        inst = self.instances.get(persona_id)
+        if inst is None or inst.status != DISMISSED:
+            raise ValueError(f"{persona_id} 非 dismissed，不可重新启用")
+        inst.status = ACTIVE
+        inst.agent = self.make_agent(persona_id, llm, era)
+        return inst.agent
+
+    def dismiss(self, persona_id: str) -> None:
+        """免职：active -> dismissed（保留记忆与怨气，可重新招募）。"""
+        inst = self.instances.get(persona_id)
+        if inst is None or inst.status != ACTIVE:
+            raise ValueError(f"{persona_id} 非 active，不可免职")
+        inst.status = DISMISSED
+        inst.agent = None
+
+    def kill(self, persona_id: str) -> None:
+        """赐死/死亡：any -> dead，移除 agent。"""
+        inst = self.instances.get(persona_id)
+        if inst is None:
+            raise KeyError(f"未知角色: {persona_id}")
+        inst.status = DEAD
+        inst.agent = None
+
+    # ---------- 虚构角色注入（科举进士） ----------
+    def add_fictional(
+        self,
+        persona: PersonaCard,
+        llm: LLMProvider,
+        era: str,
+        *,
+        factual: FactualMemory | None = None,
+        narrative: NarrativeMemory | None = None,
+    ) -> BaseAgent:
+        """科举授官新增虚构 agent：直接 active 在朝。"""
+        if persona.id in self.instances:
+            raise ValueError(f"角色 id 冲突: {persona.id}")
+        inst = AgentInstance(
+            persona=persona,
+            status=ACTIVE,
+            factual=factual or FactualMemory(),
+            narrative=narrative or NarrativeMemory(),
+        )
+        self.instances[persona.id] = inst
+        inst.agent = self.make_agent(persona.id, llm, era)
+        return inst.agent
+
+    # ---------- 存档 ----------
+    def to_dict(self) -> dict:
+        return {"instances": {k: v.to_dict() for k, v in self.instances.items()}}

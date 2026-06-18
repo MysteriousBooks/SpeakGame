@@ -1,9 +1,18 @@
-# 百姓 agent（承载年景/民力/民心）
-name: 百姓
-agent_id: common_people
-title: 百姓
-personality: 朴实、求安稳、畏官
-faction: 无
-skills: [农事, 民情]
-loyalty: 50
-born_year: 1590
+# 百姓 agent（全局，非朝廷官员，每回合产出年景 + 各省民心）
+# 计划第3节 MVP 角色集：百姓 agent 产出"年景"（丰收/平/灾）+ 各省份民心，社会压力自下而上涌现。
+# 省份视图（百姓_京畿/百姓_陕西）作为其子项。
+
+id: common_people
+name: 黎庶
+faction: 民间
+skills: [耕作, 纳赋, 民心]
+historical_alignment: 中性
+personality: 务实趋利，畏威怀恩，重年景与赋税轻重；旱涝则流离，轻徭则安业
+relations: {}
+recruitment_condition: 非招募对象（系统常驻）
+# 百姓无个体寿命
+born_year: 0
+historical_death_year: 9999
+death_cause:
+  type: natural
+  desc: 非个体死亡
