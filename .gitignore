@@ -1,14 +1,23 @@
-# Python-generated files
+# Python
 __pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
 
-# Virtual environments
-.venv
-/.claude/
-/.codegraph/
-/.idea/
-/.omc/
+# 环境与密钥
+.env
+*.local
+
+# 存档与运行产物
+saves/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# 索引
+.codegraph/

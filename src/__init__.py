@@ -1,1 +1,3 @@
-"""speakGame - AI原生历史策略文字对话游戏（崇祯式多Agent社会模拟）。"""
+"""speakGame —— 崇祯式多 Agent 社会模拟。"""
+
+__version__ = "0.1.0"

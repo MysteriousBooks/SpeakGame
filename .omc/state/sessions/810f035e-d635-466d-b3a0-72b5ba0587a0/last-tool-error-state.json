@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"cd D:/project/speakGame && uv run pytest tests/ -v 2>&1\",\"description\":\"全量测试（含 M4）\"}",
+  "error": "Exit code 1\n============================= test session starts =============================\r\nplatform win32 -- Python 3.13.12, pytest-9.1.0, pluggy-1.6.0 -- D:\\project\\speakGame\\.venv\\Scripts\\python.exe\r\ncachedir: .pytest_cache\r\nrootdir: D:\\project\\speakGame\r\nconfigfile: pyproject.toml\r\nplugins: anyio-4.14.0, asyncio-1.4.0\r\nasyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function\r\ncollecting ... collected 46 items\r\n\r\ntests/test_eve...",
+  "timestamp": "2026-06-17T07:33:27.058Z",
+  "retry_count": 1
+}

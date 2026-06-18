@@ -1,66 +1,57 @@
-# 真实明末历史事件库（作为玩家任务）
-# trigger_time: 崇祯X年X月（史实触发时间，玩家行为可微调但大概率按此出现）
-# resolve_conditions: 数值阈值，代码判定（纯数值比较，非LLM主观）
-# fail_consequences: 不解决/逾期的后果
+# 真实明末历史事件（主线史实事件，作为玩家任务）
+# 结构见计划第3节"真实历史事件系统"。事件解决由纯代码数值阈值判定（非 LLM 主观）。
 
 events:
-  - id: purge_wei_zhongxian
+  - id: chu_chu_wei_zhong_xian
     name: 铲除魏忠贤
-    trigger_time: "崇祯1年1月"   # 开局即挂起（登基后首要）
-    premonition_lead: 0          # 开局事件，0预兆
-    background: >
-      天启七年八月信王朱由检继位，魏忠贤阉党专权多年，朝野侧目。
-      帝初登大宝，权柄未稳，阉党盘根错节，须徐图之。
-    involved_agents: [minister_finance]
-    task_desc: 魏忠贤阉党专权，须逐步剪除其羽翼、稳固皇权。
-    resolve_conditions:
-      朝堂清洗度: ">=80"
-    fail_consequences:
-      - 逾半年未解决则民心-5、朝堂清洗度停滞
-
-  - id: shaanxi_drought_rebellion
-    name: 陕西旱灾与民变开端
-    trigger_time: "崇祯1年1月"    # 登基时陕西已连年旱灾
+    trigger_time: 崇祯1年1月      # 开局即挂起
     premonition_lead: 0
-    background: >
-      陕西连年大旱，颗粒无收，饥民遍野，驿递裁撤后李自成等失业。
-      民心思变，若不赈济抚恤，恐酿民变。
+    background: 天启驾崩，朱由检继位，魏忠贤阉党专权，朝政腐败，帝欲铲除阉党以振朝纲
+    involved_agents: [minister_finance, minister_war]
+    task_desc: 阉党专权，朝政腐败。帝可下诏铲除阉党成员、查抄家产、贬黜党羽，以提升朝堂清洗度
+    resolve_conditions:
+      朝堂清洗度: ">=60"
+    fail_consequences:
+      - desc: 阉党未除，朝政继续腐败
+        delta: {民心: -2}
+
+  - id: shan_xi_han_zai
+    name: 陕西旱灾与民变开端
+    trigger_time: 崇祯1年1月      # 开局即挂起（持续）
+    premonition_lead: 0
+    background: 陕西连年旱灾，饥民流离，赋税沉重，民变萌芽（李自成等流民初起）
     involved_agents: [minister_finance, common_people]
-    task_desc: 陕西旱灾严重，须拨款赈灾、安抚民心，否则民变升级。
+    task_desc: 陕西旱灾持续，饥民流离。帝须下诏赈灾拨款、减免田赋以安抚，否则民变升级
     resolve_conditions:
       陕西_民心: ">=60"
-      国库: ">=500000"
+      国库: ">=200000"
     fail_consequences:
-      - 每月未解决则陕西_民心-8、军力-3
-      - 陕西_民心<15 时升级为"流民起义"事件
+      - desc: 赈灾不力，陕西民变升级，民心骤降
+        delta: {陕西_民心: -15, 民心: -5}
+      - desc: 流民聚义，民变萌芽
+        delta: {陕西_人口: -200000}
 
   - id: ji_si_zhi_bian
     name: 己巳之变
-    trigger_time: "崇祯2年10月"   # 1629年己巳之变，皇太极入塞
-    premonition_lead: 3            # 提前3个月出现预兆
-    background: >
-      崇祯二年十月，皇太极率后金军绕道蒙古入塞，直逼京畿，
-      袁崇焕入援，京师震恐。须调兵勤王、筹措军饷、安靖京畿。
-    involved_agents: [minister_finance, common_people]
-    task_desc: 后金军入塞逼京畿，须调兵勤王、筹措军饷、稳定京畿民心。
+    trigger_time: 崇祯2年10月
+    premonition_lead: 3
+    background: 皇太极率后金军绕道蒙古入塞，直逼京畿，京师震恐
+    involved_agents: [minister_war, common_people]
+    task_desc: 后金军入塞，京畿危急。帝须调兵勤王、筹措军饷、安抚京畿民心
     resolve_conditions:
       军力: ">=70"
-      京畿_民心: ">=50"
       国库: ">=200000"
+      京畿_民心: ">=50"
     fail_consequences:
-      - 逾月不解决则军力-15、京畿_民心-20
-      - 京畿_民心<20 时升级为"京畿沦陷"危机
+      - desc: 逾月不解决，京畿危急，军力与民心骤降
+        delta: {军力: -15, 京畿_民心: -20}
 
-  - id: liaodong_military_pay
-    name: 辽东军饷危机
-    trigger_time: "崇祯1年6月"
+  - id: ke_ju
+    name: 科举
+    trigger_time: 崇祯3年1月
     premonition_lead: 2
-    background: >
-      辽东连年用兵，辽饷加派沉重，国库枯竭，军力受拖累。
-    involved_agents: [minister_finance]
-    task_desc: 辽东军饷告急，须平衡财政与军备。
-    resolve_conditions:
-      国库: ">=300000"
-      军力: ">=65"
-    fail_consequences:
-      - 每月未解决则军力-5
+    background: 三年一科，礼部奏请开科取士
+    involved_agents: []
+    task_desc: 科举开科，乡试→会试→殿试。帝亲自主持殿试定名次授官，新增朝廷官员
+    resolve_conditions: {}        # 科举由玩家操作解决（殿试授官），非数值阈值
+    fail_consequences: []
