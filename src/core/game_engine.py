@@ -67,6 +67,7 @@ class GameEngine:
         self.orchestrator = TurnOrchestrator(orchestrator_llm, config=config)
         self.historian = Historian(historian_llm, config=config)
         self.role_llm = role_llm
+        self.turn_history: list[dict] = []  # 历史回合摘要（服务端持久，刷新页面可回看）
         self._setup_initial_court()
         self.events.trigger_initial()
 
@@ -94,6 +95,7 @@ class GameEngine:
             "active_agents": [
                 {"id": a.id, "name": a.name} for a in self.roster.active_agents()
             ],
+            "history": list(self.turn_history),
         }
 
     def situation_text(self) -> str:
@@ -263,7 +265,7 @@ class GameEngine:
         crossed = self.state.advance_time(turn_length)
         newly_triggered = self.events.trigger_by_months(crossed)
 
-        return TurnSummary(
+        summary = TurnSummary(
             era=self.state.era_label(),
             narrative=turn_result.narrative,
             delta_applied=dict(delta_result.applied),
@@ -281,6 +283,22 @@ class GameEngine:
             task=plan_task_snapshot,
             execution_public=execution_public,
         )
+        # 服务端持久化回合摘要（刷新页面可回看，最多保留 30 回合）
+        self.turn_history.append(
+            {
+                "era": summary.era,
+                "edict": edict,
+                "narrative": summary.narrative,
+                "execution_public": summary.execution_public,
+                "delta_applied": dict(summary.delta_applied),
+                "new_events_triggered": summary.new_events_triggered,
+                "events_resolved": summary.events_resolved,
+                "fail_delta": dict(summary.fail_delta),
+                "audience_queue": list(summary.audience_queue),
+            }
+        )
+        self.turn_history = self.turn_history[-30:]
+        return summary
 
     def _apply_finance_transfer(self, finance_action: dict) -> None:
         """执行财政划拨（内帑→国库允许；国库→内帑默认拒绝/force 触发哗然）。"""
