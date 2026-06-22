@@ -5,6 +5,7 @@ figures:
   - id: yuan_chonghuan
     name: 袁崇焕
     courtesy: 元素
+    position: 辽东巡抚
     born_year: 1584
     historical_death_year: 1630
     death_cause:
@@ -20,6 +21,7 @@ figures:
   - id: sun_chuanting
     name: 孙传庭
     courtesy: 伯雅
+    position: 陕西巡抚
     born_year: 1593
     historical_death_year: 1643
     death_cause:
@@ -35,6 +37,7 @@ figures:
   - id: hong_chengchou
     name: 洪承畴
     courtesy: 亨九
+    position: 三边总督
     born_year: 1593
     historical_death_year: 1665
     death_cause:
@@ -50,6 +53,7 @@ figures:
   - id: lu_xiangsheng
     name: 卢象升
     courtesy: 建斗
+    position: 大名知府
     born_year: 1600
     historical_death_year: 1639
     death_cause:
@@ -65,6 +69,7 @@ figures:
   - id: yang_sichang
     name: 杨嗣昌
     courtesy: 文弱
+    position: 兵部侍郎
     born_year: 1588
     historical_death_year: 1641
     death_cause:
@@ -80,6 +85,7 @@ figures:
   - id: wen_tiren
     name: 温体仁
     courtesy: 元卿
+    position: 礼部尚书
     born_year: 1573
     historical_death_year: 1639
     death_cause:
@@ -95,6 +101,7 @@ figures:
   - id: zhou_yanru
     name: 周延儒
     courtesy: 玉绳
+    position: 内阁大学士
     born_year: 1593
     historical_death_year: 1643
     death_cause:
@@ -106,3 +113,67 @@ figures:
     personality: 巧言善谋，贪墨，结党营私
     relations: {政敌: 温体仁}
     recruitment_condition: 内阁缺人时可召
+
+  - id: wang_yongguang
+    name: 王永光
+    courtesy: 有孚
+    position: 吏部尚书
+    born_year: 1561
+    historical_death_year: 1638
+    death_cause:
+      type: natural
+      desc: 病亡
+    faction: 独相派
+    skills: [铨选, 吏治, 党争]
+    historical_alignment: 争议
+    personality: 老成持重，善铨选，周旋于党争之间
+    relations: {同僚: 温体仁}
+    recruitment_condition: 开局在朝
+
+  - id: qiao_yunsheng
+    name: 乔允升
+    courtesy: 吉甫
+    position: 刑部尚书
+    born_year: 1557
+    historical_death_year: 1635
+    death_cause:
+      type: natural
+      desc: 病亡
+    faction: 循吏系
+    skills: [刑名, 司法, 审案]
+    historical_alignment: 正派
+    personality: 刚正不阿，精于刑名，持法公允
+    relations: {同僚: 毕自严}
+    recruitment_condition: 开局在朝
+
+  - id: liu_zunxian
+    name: 刘遵宪
+    courtesy: 可权
+    position: 工部尚书
+    born_year: 1565
+    historical_death_year: 1640
+    death_cause:
+      type: natural
+      desc: 病亡
+    faction: 循吏系
+    skills: [营建, 水利, 屯田]
+    historical_alignment: 正派
+    personality: 勤勉务实，精于工程营造
+    relations: {同僚: 毕自严}
+    recruitment_condition: 开局在朝
+
+  - id: wei_zhongxian
+    name: 魏忠贤
+    courtesy: ""
+    position: 司礼监掌印太监
+    born_year: 1568
+    historical_death_year: 1628
+    death_cause:
+      type: suicide
+      desc: 崇祯元年被贬凤阳，途中自缢
+    faction: 阉党
+    skills: [权术, 特务, 党争, 内廷]
+    historical_alignment: 反派
+    personality: 阴狠专权，善揣摩帝意，结党营私，权倾朝野
+    relations: {党羽: 阉党余孽, 政敌: 东林党}
+    recruitment_condition: 开局在朝
