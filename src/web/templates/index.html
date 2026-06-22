@@ -139,8 +139,9 @@
     <div class="toolbar">
       <button onclick="openRecruit()">招募</button>
       <button onclick="startExam()" class="badge-dot" id="exam-btn">科举</button>
-      <button onclick="saveGame()">存档</button>
-      <button onclick="loadGame()">读档</button>
+      <button onclick="openSaveModal()">存档</button>
+      <button onclick="openLoadModal()">读档</button>
+      <button onclick="newGame()" style="color:var(--danger)">新游戏</button>
     </div>
 
     <h2>国库 / 内帑</h2>
@@ -229,6 +230,22 @@
     <div class="modal-box">
       <div class="modal-header"><h3 id="exam-title">殿试 · 贡士授官</h3><button class="modal-close" onclick="closeModal('exam-modal')">&times;</button></div>
       <div class="modal-body" id="exam-body"><div style="color:var(--muted)">加载中…</div></div>
+    </div>
+  </div>
+
+  <!-- 存档弹窗 -->
+  <div class="modal-overlay" id="save-modal">
+    <div class="modal-box" style="width:400px">
+      <div class="modal-header"><h3>存档</h3><button class="modal-close" onclick="closeModal('save-modal')">&times;</button></div>
+      <div class="modal-body" id="save-body">加载中…</div>
+    </div>
+  </div>
+
+  <!-- 读档弹窗 -->
+  <div class="modal-overlay" id="load-modal">
+    <div class="modal-box" style="width:400px">
+      <div class="modal-header"><h3>读档</h3><button class="modal-close" onclick="closeModal('load-modal')">&times;</button></div>
+      <div class="modal-body" id="load-body">加载中…</div>
     </div>
   </div>
 
@@ -463,23 +480,6 @@
         closeModal('exam-modal');
         refreshState();
       } else alert(data.error || '授官失败');
-    }
-
-    // ---- 存档/读档 ----
-    async function saveGame() {
-      const fd = new FormData(); fd.append('path', 'saves/save.json');
-      const r = await fetch('/save', {method:'POST', body: fd});
-      const data = await r.json();
-      if (data.ok) alert('存档成功：' + data.path);
-      else alert('存档失败');
-    }
-    async function loadGame() {
-      if (!confirm('读档将覆盖当前进度，确定？')) return;
-      const fd = new FormData(); fd.append('path', 'saves/save.json');
-      const r = await fetch('/load', {method:'POST', body: fd});
-      const data = await r.json();
-      if (data.ok) { alert('读档成功：' + data.era); location.reload(); }
-      else alert(data.error || '读档失败');
     }
 
     // ---- 下一回合（实时早朝 + 推演） ----
@@ -721,6 +721,60 @@
     }
 
     // 求见队列中的"召见"按钮改为 openDialogue（已在 HTML 中处理）
+
+    // ---- 存档/读档/新游戏 ----
+    async function openSaveModal() {
+      openModal('save-modal');
+      const r = await fetch('/saves');
+      const data = await r.json();
+      document.getElementById('save-body').innerHTML = data.slots.map(s => {
+        if (s.exists) {
+          return `<div class="card"><span class="name">槽位 ${s.slot}</span><div class="meta">${s.era} · 第${s.turn}回合</div><button onclick="doSave(${s.slot})">覆盖存档</button></div>`;
+        } else {
+          return `<div class="card"><span class="name">槽位 ${s.slot}</span><div class="meta" style="color:var(--muted)">空</div><button onclick="doSave(${s.slot})">存档</button></div>`;
+        }
+      }).join('');
+    }
+
+    async function doSave(slot) {
+      const fd = new FormData();
+      fd.append('slot', slot);
+      const r = await fetch('/save', {method:'POST', body: fd});
+      const data = await r.json();
+      if (data.ok) { alert('存档成功：槽位' + slot); closeModal('save-modal'); }
+      else alert(data.error || '存档失败');
+    }
+
+    async function openLoadModal() {
+      openModal('load-modal');
+      const r = await fetch('/saves');
+      const data = await r.json();
+      document.getElementById('load-body').innerHTML = data.slots.map(s => {
+        if (s.exists) {
+          return `<div class="card"><span class="name">槽位 ${s.slot}</span><div class="meta">${s.era} · 第${s.turn}回合</div><button onclick="doLoad(${s.slot})">读档</button></div>`;
+        } else {
+          return `<div class="card"><span class="name">槽位 ${s.slot}</span><div class="meta" style="color:var(--muted)">空</div></div>`;
+        }
+      }).join('');
+    }
+
+    async function doLoad(slot) {
+      if (!confirm('读档将覆盖当前进度，确定？')) return;
+      const fd = new FormData();
+      fd.append('slot', slot);
+      const r = await fetch('/load', {method:'POST', body: fd});
+      const data = await r.json();
+      if (data.ok) { alert('读档成功'); location.reload(); }
+      else alert(data.error || '读档失败');
+    }
+
+    async function newGame() {
+      if (!confirm('新游戏将重置所有进度，确定？')) return;
+      const r = await fetch('/new_game', {method:'POST'});
+      const data = await r.json();
+      if (data.ok) location.reload();
+      else alert('新游戏失败');
+    }
 
     async function refreshState() {
       const s = await (await fetch('/state')).json();
