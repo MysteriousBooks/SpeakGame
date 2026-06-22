@@ -25,7 +25,6 @@ from src.finance.economy import FinanceParams, apply_finance_delta, settle
 from src.llm.provider import LLMProvider, Message
 from src.recruitment.roster import Roster
 
-_INITIAL_COURT = ["minister_finance.yaml", "minister_war.yaml", "common_people.yaml"]
 
 
 @dataclass
@@ -73,11 +72,16 @@ class GameEngine:
         self.events.trigger_initial()
 
     def _setup_initial_court(self) -> None:
-        """开局内阁：户部尚书、兵部尚书、百姓（common_people 系统常驻）直接 active。"""
+        """开局内阁：加载 individual YAML + 激活 recruitment_condition='开局在朝' 的角色。"""
         era = self.state.era_label()
-        for fname in _INITIAL_COURT:
+        # 从 individual YAML 加载开局角色
+        for fname in ["minister_finance.yaml", "minister_war.yaml", "common_people.yaml"]:
             persona = load_persona(fname)
             self.roster.add_fictional(persona, self.role_llm, era)
+        # 从 historical_figures 激活开局在朝角色
+        for inst in list(self.roster.instances.values()):
+            if inst.persona.recruitment_condition == "开局在朝":
+                self.roster.recruit(inst.persona.id, self.role_llm, era)
 
     # ---------- 状态快照 ----------
     def state_snapshot(self) -> dict:
