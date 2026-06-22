@@ -4,6 +4,7 @@
 id: minister_war
 name: 王在晋
 courtesy: 明初
+position: 兵部尚书
 faction: 主守派
 skills: [军事, 辽防, 筹饷]
 historical_alignment: 中性

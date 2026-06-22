@@ -4,6 +4,7 @@
 id: minister_finance
 name: 毕自严
 courtesy: 景曾
+position: 户部尚书
 faction: 循吏系
 skills: [理财, 户部, 赋税, 节用]
 historical_alignment: 正派

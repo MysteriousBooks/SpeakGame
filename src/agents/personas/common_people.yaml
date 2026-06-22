@@ -4,6 +4,7 @@
 
 id: common_people
 name: 黎庶
+position: 百姓
 faction: 民间
 skills: [耕作, 纳赋, 民心]
 historical_alignment: 中性
