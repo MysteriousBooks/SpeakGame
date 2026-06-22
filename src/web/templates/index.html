@@ -292,7 +292,9 @@
             if (e.role === 'player') {
               html += '<div class="dialogue-turn"><div class="player-msg">【帝】' + e.content + '</div></div>';
             } else {
-              html += '<div class="dialogue-turn"><div class="agent-public">' + e.content + '</div></div>';
+              html += '<div class="dialogue-turn"><div class="agent-public">' + e.content + '</div>';
+              if (e.private) html += '<div class="agent-private">' + e.private + '</div>';
+              html += '</div>';
             }
           }
           body.innerHTML = html || '<div style="color:var(--muted)">开始对话</div>';

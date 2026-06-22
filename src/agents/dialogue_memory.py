@@ -8,15 +8,22 @@ from typing import Any
 class DialogueEntry:
     """单轮对话记录。"""
     role: str  # "player" | "agent"
-    content: str
+    content: str  # 公开层内容
     turn: int
+    private: str = ""  # 私密层（密奏），仅 agent 回复时有
 
     def to_dict(self) -> dict:
-        return {"role": self.role, "content": self.content, "turn": self.turn}
+        d = {"role": self.role, "content": self.content, "turn": self.turn}
+        if self.private:
+            d["private"] = self.private
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> DialogueEntry:
-        return cls(role=d["role"], content=d["content"], turn=int(d.get("turn", 0)))
+        return cls(
+            role=d["role"], content=d["content"],
+            turn=int(d.get("turn", 0)), private=d.get("private", ""),
+        )
 
 
 @dataclass
@@ -25,8 +32,8 @@ class DialogueMemory:
     compressed_summary: str = ""
     exchanges: list[DialogueEntry] = field(default_factory=list)
 
-    def add_exchange(self, role: str, content: str, turn: int) -> None:
-        self.exchanges.append(DialogueEntry(role=role, content=content, turn=turn))
+    def add_exchange(self, role: str, content: str, turn: int, private: str = "") -> None:
+        self.exchanges.append(DialogueEntry(role=role, content=content, turn=turn, private=private))
 
     def clear_exchanges(self) -> None:
         self.exchanges.clear()

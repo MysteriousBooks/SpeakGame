@@ -102,8 +102,8 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
         scene = f"皇帝召见你，在御书房密谈。当前时间：{era}。"
         out = await inst.agent.respond(scene, message)
 
-        # 记录 agent 回复
-        inst.dialogue_memory.add_exchange("agent", out.public, current_turn)
+        # 记录 agent 回复（公开层 + 密奏）
+        inst.dialogue_memory.add_exchange("agent", out.public, current_turn, private=out.private)
 
         return JSONResponse({
             "ok": True,
