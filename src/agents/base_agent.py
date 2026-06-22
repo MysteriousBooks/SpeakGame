@@ -40,6 +40,7 @@ class PersonaCard:
     id: str = ""
     name: str = ""
     courtesy: str = ""
+    position: str = ""
     faction: str = ""
     skills: list[str] = field(default_factory=list)
     personality: str = ""
@@ -57,6 +58,7 @@ class PersonaCard:
             id=d["id"],
             name=d["name"],
             courtesy=d.get("courtesy", ""),
+            position=d.get("position", ""),
             faction=d.get("faction", ""),
             skills=list(d.get("skills", [])),
             personality=d.get("personality", ""),
@@ -72,12 +74,13 @@ class PersonaCard:
         """输出给 agent 的人格卡片段（元信息隔离：不含死因/正反派）。"""
         lines = [
             f"姓名：{self.name}" + (f"（字 {self.courtesy}）" if self.courtesy else ""),
+            f"官职：{self.position}" if self.position else "",
             f"派系：{self.faction}",
             f"擅长：{'、'.join(self.skills) if self.skills else '无'}",
             f"性格：{self.personality}",
             f"关系网：{self._fmt_relations()}",
         ]
-        return "\n".join(lines)
+        return "\n".join(filter(None, lines))
 
     def _fmt_relations(self) -> str:
         if not self.relations:
