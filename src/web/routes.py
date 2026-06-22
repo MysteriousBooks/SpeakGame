@@ -243,84 +243,38 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
         )
 
     @app.post("/save")
-    async def save(path: str = Form("saves/save.json")) -> JSONResponse:
-        from pathlib import Path
-
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        engine.save(path)
-        # 额外保存 turn_history（engine.save 不含）
-        import json as _json
-        hist_path = Path(path).with_suffix(".history.json")
-        hist_path.write_text(_json.dumps(engine.turn_history, ensure_ascii=False, indent=2), encoding="utf-8")
-        return JSONResponse({"ok": True, "path": path})
+    async def save_game(slot: int = Form(1)) -> JSONResponse:
+        """存档到指定槽位（1/2/3）。"""
+        try:
+            path = engine.save_to_slot(slot)
+            return JSONResponse({"ok": True, "path": path, "slot": slot})
+        except Exception as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
 
     @app.post("/load")
-    async def load(path: str = Form("saves/save.json")) -> JSONResponse:
-        """读档：加载存档恢复全部状态（含 roster 记忆/忠诚/状态 + turn_history）。"""
-        from pathlib import Path
-        if not Path(path).exists():
-            return JSONResponse({"ok": False, "error": "存档不存在"}, status_code=404)
+    async def load_game(slot: int = Form(1)) -> JSONResponse:
+        """从指定槽位读档。"""
         try:
-            import json
-            from src.core.world_state import WorldState
-            from src.finance.economy import FinanceParams
-            from src.core.tasks import TaskSystem
-            from src.core.audience import AudienceQueue
-            from src.events.event_engine import EventEngine
-            from src.memory.factual_memory import FactualMemory
-            from src.memory.narrative_memory import NarrativeMemory
-            from src.agents.dialogue_memory import DialogueMemory
-
-            data = json.loads(Path(path).read_text(encoding="utf-8"))
-
-            # 1. 核心状态
-            engine.state = WorldState.from_dict(data["state"], engine.state.bounds)
-            fin = data["finance"]
-            engine.finance = FinanceParams(
-                income_monthly=fin["income_monthly"],
-                expense_monthly=fin["expense_monthly"],
-                tax_rates=fin["tax_rates"],
-                zonglu_reform=fin["zonglu_reform"],
-            )
-            engine.tasks = TaskSystem.from_dict(data["tasks"])
-            engine.audience = AudienceQueue.from_dict(data["audience"])
-            engine.events = EventEngine.from_dict(data["events"], engine.config)
-
-            # 2. 恢复 roster：状态/记忆/忠诚/不满/安全度
-            era = engine.state.era_label()
-            saved_roster = data.get("roster", {}).get("instances", {})
-            for inst_id, inst_data in saved_roster.items():
-                inst = engine.roster.get(inst_id)
-                if inst is None:
-                    continue
-                # 恢复状态
-                inst.status = inst_data.get("status", "available")
-                inst.loyalty = inst_data.get("loyalty", 70)
-                inst.dissatisfaction = inst_data.get("dissatisfaction", 0)
-                inst.safety = inst_data.get("safety", 50)
-                # 恢复记忆
-                inst.factual = FactualMemory.from_dict(inst_data.get("factual", {}))
-                inst.narrative = NarrativeMemory.from_dict(inst_data.get("narrative", {}))
-                # 恢复对话历史
-                inst.dialogue_memory = DialogueMemory.from_dict(inst_data.get("dialogue_memory", {}))
-                # active 角色重建 agent（用恢复后的记忆）
-                if inst.status == "active":
-                    inst.agent = engine.roster.make_agent(inst_id, engine.role_llm, era)
-                else:
-                    inst.agent = None
-
-            # 3. 恢复 turn_history
-            hist_path = Path(path).with_suffix(".history.json")
-            if hist_path.exists():
-                engine.turn_history = json.loads(hist_path.read_text(encoding="utf-8"))
-            else:
-                engine.turn_history.clear()
-
-            return JSONResponse({"ok": True, "era": engine.state.era_label()})
+            engine.load_from_slot(slot)
+            return JSONResponse({"ok": True, "era": engine.state.era_label(), "slot": slot})
+        except FileNotFoundError:
+            return JSONResponse({"ok": False, "error": f"槽位 {slot} 无存档"}, status_code=404)
         except Exception as exc:
-            import traceback
-            traceback.print_exc()
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    @app.post("/new_game")
+    async def new_game() -> JSONResponse:
+        """新游戏：重置引擎到初始状态。"""
+        engine.new_game()
+        return JSONResponse({
+            "ok": True,
+            "era": engine.state.era_label(),
+        })
+
+    @app.get("/saves")
+    async def list_saves() -> JSONResponse:
+        """列出所有存档槽位。"""
+        return JSONResponse({"slots": GameEngine.list_saves()})
 
     # ---- 科举系统 ----
     @app.post("/exam/start")

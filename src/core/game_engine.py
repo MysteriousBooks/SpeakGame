@@ -479,3 +479,105 @@ class GameEngine:
             if inst is not None and inst.status == "active":
                 inst.agent = eng.roster.make_agent(inst_id, role_llm, era)
         return eng
+
+    # ---------- 新游戏 ----------
+    def new_game(self) -> None:
+        """重置引擎到初始状态（新游戏）。"""
+        cfg = self.config
+        self.state = WorldState.initial(cfg)
+        self.finance = FinanceParams.from_config(cfg)
+        self.roster = Roster(cfg)
+        self.tasks = TaskSystem()
+        self.audience = AudienceQueue()
+        self.events = EventEngine(cfg)
+        self.turn_history.clear()
+        self._pending_edict = ""
+        self._exam_gongshi = None
+        self._exam_rankings = {}
+        self._exam_year = 0
+        self._setup_initial_court()
+        self.events.trigger_initial()
+
+    # ---------- 存档槽位 ----------
+    SAVE_DIR = Path("saves")
+
+    def _slot_path(self, slot: int) -> Path:
+        return self.SAVE_DIR / f"slot_{slot}"
+
+    def save_to_slot(self, slot: int) -> str:
+        """保存到指定槽位。"""
+        import json
+        slot_dir = self._slot_path(slot)
+        slot_dir.mkdir(parents=True, exist_ok=True)
+        path = slot_dir / "state.json"
+        self.save(str(path))
+        hist_path = slot_dir / "history.json"
+        hist_path.write_text(
+            json.dumps(self.turn_history, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return str(slot_dir)
+
+    def load_from_slot(self, slot: int) -> None:
+        """从指定槽位加载。"""
+        import json
+        slot_dir = self._slot_path(slot)
+        path = slot_dir / "state.json"
+        if not path.exists():
+            raise FileNotFoundError(f"槽位 {slot} 无存档")
+        # 用当前 engine 的 llm 配置重建
+        data = json.loads(path.read_text(encoding="utf-8"))
+        self.state = WorldState.from_dict(data["state"], self.state.bounds)
+        fin = data["finance"]
+        self.finance = FinanceParams(
+            income_monthly=fin["income_monthly"],
+            expense_monthly=fin["expense_monthly"],
+            tax_rates=fin["tax_rates"],
+            zonglu_reform=fin["zonglu_reform"],
+        )
+        self.tasks = TaskSystem.from_dict(data["tasks"])
+        self.audience = AudienceQueue.from_dict(data["audience"])
+        self.events = EventEngine.from_dict(data["events"], self.config)
+        # roster 重建
+        self.roster = Roster(self.config)
+        era = self.state.era_label()
+        for inst_id, inst_data in data["roster"].get("instances", {}).items():
+            saved_inst = inst_data
+            persona = next(
+                (p for p in self.roster.instances.values() if p.persona.id == inst_id),
+                None,
+            )
+            if persona is None:
+                continue
+            persona.status = saved_inst.get("status", "available")
+            persona.loyalty = saved_inst.get("loyalty", 70)
+            persona.dissatisfaction = saved_inst.get("dissatisfaction", 0)
+            persona.safety = saved_inst.get("safety", 50)
+            from src.agents.dialogue_memory import DialogueMemory
+            persona.dialogue_memory = DialogueMemory.from_dict(saved_inst.get("dialogue_memory", {}))
+            if persona.status == "active":
+                persona.agent = self.roster.make_agent(inst_id, self.role_llm, era)
+        # 恢复 turn_history
+        hist_path = slot_dir / "history.json"
+        if hist_path.exists():
+            self.turn_history = json.loads(hist_path.read_text(encoding="utf-8"))
+
+    @staticmethod
+    def list_saves() -> list[dict]:
+        """列出所有存档槽位信息。"""
+        import json
+        slots = []
+        for i in range(1, 4):
+            slot_dir = GameEngine.SAVE_DIR / f"slot_{i}"
+            state_path = slot_dir / "state.json"
+            if state_path.exists():
+                data = json.loads(state_path.read_text(encoding="utf-8"))
+                slots.append({
+                    "slot": i,
+                    "exists": True,
+                    "era": data.get("state", {}).get("era", ""),
+                    "turn": data.get("state", {}).get("turn", 0),
+                })
+            else:
+                slots.append({"slot": i, "exists": False})
+        return slots
