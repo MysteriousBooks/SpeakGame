@@ -85,13 +85,26 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
 
     @app.post("/dialogue/{agent_id}")
     async def dialogue(agent_id: str, message: str = Form(...)) -> JSONResponse:
-        """与官员一对一对话（召见/主动问询）：玩家发消息，agent 返回公开层+私密层。"""
+        """与官员一对一对话：记录对话历史，注入摘要。"""
         inst = engine.roster.get(agent_id)
         if inst is None:
             return JSONResponse({"ok": False, "error": "该官员不在朝"}, status_code=404)
         era = engine.state.era_label()
+        current_turn = engine.state.current_month_index()
+
+        # 记录玩家消息
+        inst.dialogue_memory.add_exchange("player", message, current_turn)
+
+        # 注入对话摘要到 agent
+        summary = inst.dialogue_memory.compressed_summary
+        inst.agent.set_dialogue_summary(summary)
+
         scene = f"皇帝召见你，在御书房密谈。当前时间：{era}。"
         out = await inst.agent.respond(scene, message)
+
+        # 记录 agent 回复
+        inst.dialogue_memory.add_exchange("agent", out.public, current_turn)
+
         return JSONResponse({
             "ok": True,
             "agent_id": agent_id,
