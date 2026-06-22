@@ -201,7 +201,7 @@
 
     <h2>在朝百官（点击可问询）</h2>
     <div class="agents" id="agents">
-      {% for a in state.active_agents %}<span onclick="openDialogue('{{ a.id }}','{{ a.name }}')">{{ a.name }}</span>{% endfor %}
+      {% for a in state.active_agents %}<span onclick="openDialogue('{{ a.id }}','{{ a.name }}')">{{ a.name }}{% if a.position %}（{{ a.position }}）{% endif %}</span>{% endfor %}
     </div>
   </section>
 
@@ -270,14 +270,16 @@
 
     function openDialogue(agentId, agentName) {
       currentDialogueAgent = agentId;
-      document.getElementById('dialogue-agent-name').textContent = agentName;
       document.getElementById('dialogue-input').value = '';
       document.getElementById('dialogue-overlay').classList.add('active');
-      // 加载对话历史
+      // 加载对话历史 + 显示职务
       const body = document.getElementById('dialogue-body');
       body.innerHTML = '<div style="color:var(--muted)">加载历史…</div>';
       fetch('/state').then(r => r.json()).then(s => {
         const agent = (s.active_agents || []).find(a => a.id === agentId);
+        // 标题显示职务
+        const title = agent && agent.position ? agentName + ' · ' + agent.position : agentName;
+        document.getElementById('dialogue-agent-name').textContent = title;
         if (agent && agent.dialogue) {
           const dm = agent.dialogue;
           let html = '';
@@ -820,7 +822,7 @@
       document.getElementById('audience').innerHTML = (s.audience_queue||[]).map(q=>
         `<div class="audience-item"><span>${q.agent_name} · <span class="topic">${q.topic}</span></span><span><button onclick="openDialogue('${q.agent_id}','${q.agent_name}')">召见</button><button class="decline" onclick="audience('${q.agent_id}','decline')">不见</button></span></div>`
       ).join('') || '<div style="color:var(--muted);font-size:0.82rem">无人求见</div>';
-      document.getElementById('agents').innerHTML = (s.active_agents||[]).map(a=>`<span onclick="openDialogue('${a.id}','${a.name}')">${a.name}</span>`).join('');
+      document.getElementById('agents').innerHTML = (s.active_agents||[]).map(a=>`<span onclick="openDialogue('${a.id}','${a.name}')">${a.name}${a.position ? '（' + a.position + '）' : ''}</span>`).join('');
       // 科举红点：科举年或有未授官贡士时显示红点
       const examBtn = document.getElementById('exam-btn');
       if (examBtn) {

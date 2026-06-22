@@ -101,6 +101,7 @@ class GameEngine:
                 {
                     "id": a.id,
                     "name": a.name,
+                    "position": a.persona.position if hasattr(a, 'persona') else '',
                     "dialogue": inst.dialogue_memory.to_dict() if (inst := self.roster.get(a.id)) else {},
                 }
                 for a in self.roster.active_agents()
