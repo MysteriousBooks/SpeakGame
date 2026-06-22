@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from src.agents.base_agent import BaseAgent, PersonaCard, load_historical_figures
+from src.agents.dialogue_memory import DialogueMemory
 from src.llm.provider import LLMProvider
 from src.memory.factual_memory import FactualMemory
 from src.memory.narrative_memory import NarrativeMemory
@@ -39,6 +40,7 @@ class AgentInstance:
     loyalty: int = 70  # 官员忠诚 0~100
     dissatisfaction: int = 0  # 不满 0~100
     safety: int = 50  # 安全度 0~100（死亡危机 resolve_conditions 用）
+    dialogue_memory: DialogueMemory = field(default_factory=DialogueMemory)
 
     def to_dict(self) -> dict:
         return {
@@ -49,6 +51,7 @@ class AgentInstance:
             "loyalty": self.loyalty,
             "dissatisfaction": self.dissatisfaction,
             "safety": self.safety,
+            "dialogue_memory": self.dialogue_memory.to_dict(),
         }
 
 

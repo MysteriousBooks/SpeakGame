@@ -256,6 +256,7 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
             from src.events.event_engine import EventEngine
             from src.memory.factual_memory import FactualMemory
             from src.memory.narrative_memory import NarrativeMemory
+            from src.agents.dialogue_memory import DialogueMemory
 
             data = json.loads(Path(path).read_text(encoding="utf-8"))
 
@@ -287,6 +288,8 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
                 # 恢复记忆
                 inst.factual = FactualMemory.from_dict(inst_data.get("factual", {}))
                 inst.narrative = NarrativeMemory.from_dict(inst_data.get("narrative", {}))
+                # 恢复对话历史
+                inst.dialogue_memory = DialogueMemory.from_dict(inst_data.get("dialogue_memory", {}))
                 # active 角色重建 agent（用恢复后的记忆）
                 if inst.status == "active":
                     inst.agent = engine.roster.make_agent(inst_id, engine.role_llm, era)
