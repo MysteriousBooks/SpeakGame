@@ -94,7 +94,12 @@ class GameEngine:
             "active_events": [ae.to_dict() for ae in self.events.active],
             "audience_queue": [r.to_dict() for r in self.audience.items()],
             "active_agents": [
-                {"id": a.id, "name": a.name} for a in self.roster.active_agents()
+                {
+                    "id": a.id,
+                    "name": a.name,
+                    "dialogue": inst.dialogue_memory.to_dict() if (inst := self.roster.get(a.id)) else {},
+                }
+                for a in self.roster.active_agents()
             ],
             "history": list(self.turn_history),
         }

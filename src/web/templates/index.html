@@ -271,9 +271,36 @@
     function openDialogue(agentId, agentName) {
       currentDialogueAgent = agentId;
       document.getElementById('dialogue-agent-name').textContent = agentName;
-      document.getElementById('dialogue-body').innerHTML = '';
       document.getElementById('dialogue-input').value = '';
       document.getElementById('dialogue-overlay').classList.add('active');
+      // 加载对话历史
+      const body = document.getElementById('dialogue-body');
+      body.innerHTML = '<div style="color:var(--muted)">加载历史…</div>';
+      fetch('/state').then(r => r.json()).then(s => {
+        const agent = (s.active_agents || []).find(a => a.id === agentId);
+        if (agent && agent.dialogue) {
+          const dm = agent.dialogue;
+          let html = '';
+          // 显示压缩摘要
+          if (dm.compressed_summary) {
+            html += '<div class="dialogue-turn" style="color:var(--muted);font-size:0.8rem;border-bottom:1px solid var(--border);padding:0.3rem 0">【过往对话摘要】' + dm.compressed_summary + '</div>';
+          }
+          // 显示当前回合的对话记录
+          for (const e of (dm.exchanges || [])) {
+            if (e.role === 'player') {
+              html += '<div class="dialogue-turn"><div class="player-msg">【帝】' + e.content + '</div></div>';
+            } else {
+              html += '<div class="dialogue-turn"><div class="agent-public">' + e.content + '</div></div>';
+            }
+          }
+          body.innerHTML = html || '<div style="color:var(--muted)">开始对话</div>';
+        } else {
+          body.innerHTML = '<div style="color:var(--muted)">开始对话</div>';
+        }
+        body.scrollTop = body.scrollHeight;
+      }).catch(() => {
+        body.innerHTML = '';
+      });
       document.getElementById('dialogue-input').focus();
     }
 
