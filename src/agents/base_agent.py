@@ -166,7 +166,18 @@ class BaseAgent:
             .replace("{{narrative_memory}}", narrative_text)
             .replace("{{scene}}", scene)
         )
+        # 注入对话历史摘要
+        dialogue_summary = getattr(self, '_dialogue_summary', '')
+        if dialogue_summary:
+            prompt += (
+                "\n\n## 你与皇帝的对话历史\n\n"
+                f"以下是你们过往对话的精炼摘要，请基于此保持对话连贯：\n{dialogue_summary}"
+            )
         return prompt
+
+    def set_dialogue_summary(self, summary: str) -> None:
+        """设置对话历史摘要，供 _build_system 注入 prompt。"""
+        self._dialogue_summary = summary
 
     async def respond(
         self,
