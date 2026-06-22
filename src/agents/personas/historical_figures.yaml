@@ -96,7 +96,7 @@ figures:
     historical_alignment: 反派
     personality: 阴柔专擅，善排挤，揣摩帝意
     relations: {政敌: 周延儒}
-    recruitment_condition: 朝堂党争激烈时在朝
+    recruitment_condition: 开局在朝
 
   - id: zhou_yanru
     name: 周延儒

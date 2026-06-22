@@ -39,9 +39,32 @@ def test_state_snapshot(client):
 
 
 def test_state_has_initial_court(client):
+    """开局应有 8 位在朝官员（六部 + 魏忠贤 + 百姓）。"""
     s = client.get("/state").json()
     ids = {a["id"] for a in s["active_agents"]}
-    assert {"minister_finance", "minister_war", "common_people"} <= ids
+    expected = {
+        "minister_finance", "minister_war", "common_people",
+        "wang_yongguang", "qiao_yunsheng", "liu_zunxian",
+        "wei_zhongxian", "wen_tiren",
+    }
+    missing = expected - ids
+    assert not missing, f"缺少开局官员: {missing}"
+
+
+def test_agents_have_position(client):
+    """每个 active agent 应有 position 字段。"""
+    s = client.get("/state").json()
+    for a in s["active_agents"]:
+        assert "position" in a, f"{a['name']} 缺少 position"
+        assert a["position"], f"{a['name']} position 为空"
+
+
+def test_wei_zhongxian_in_court(client):
+    """魏忠贤应在朝且显示正确职务。"""
+    s = client.get("/state").json()
+    wei = next((a for a in s["active_agents"] if a["id"] == "wei_zhongxian"), None)
+    assert wei is not None, "魏忠贤不在朝"
+    assert wei["position"] == "司礼监掌印太监"
 
 
 def test_state_has_opening_events(client):
