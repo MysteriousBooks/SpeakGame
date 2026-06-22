@@ -22,7 +22,7 @@ from src.core.turn_orchestrator import TurnOrchestrator
 from src.core.world_state import WorldState
 from src.events.event_engine import EventEngine
 from src.finance.economy import FinanceParams, apply_finance_delta, settle
-from src.llm.provider import LLMProvider
+from src.llm.provider import LLMProvider, Message
 from src.recruitment.roster import Roster
 
 _INITIAL_COURT = ["minister_finance.yaml", "minister_war.yaml", "common_people.yaml"]
@@ -367,6 +367,10 @@ class GameEngine:
             }
         )
         self.turn_history = self.turn_history[-30:]
+
+        # 9. 压缩对话历史
+        await self.compress_dialogues()
+
         return summary
 
     def _apply_finance_transfer(self, finance_action: dict) -> None:
@@ -380,6 +384,44 @@ class GameEngine:
         elif ftype == "treasury_to_inner":
             # 默认拒绝（不 force）；玩家强行则由编排标记，MVP 不自动 force
             transfer_treasury_to_inner(self.state.values, amount, force=False)
+
+    DIALOGUE_COMPRESS_PROMPT = (
+        "你是一个精炼对话摘要的助手。请将以下皇帝与大臣的对话记录精炼为一段摘要（100-200字），"
+        "保留关键信息：讨论的话题、大臣的立场、皇帝的决策、任何承诺或警告。\n\n"
+        "如果已有历史摘要，请将新对话与历史摘要合并更新。\n\n"
+        "历史摘要：{existing_summary}\n\n"
+        "本轮新对话：\n{exchanges}\n\n"
+        "请只输出精炼后的摘要，不要任何解释："
+    )
+
+    async def compress_dialogues(self) -> int:
+        """压缩所有 active agent 的本轮对话记录。返回压缩的 agent 数量。"""
+        compressed = 0
+        for inst in self.roster.instances.values():
+            if inst.status != "active" or not inst.dialogue_memory.exchanges:
+                continue
+            dm = inst.dialogue_memory
+            exchanges_text = "\n".join(
+                f"{'帝' if e.role == 'player' else inst.persona.name}：{e.content}"
+                for e in dm.exchanges
+            )
+            prompt = self.DIALOGUE_COMPRESS_PROMPT.format(
+                existing_summary=dm.compressed_summary or "（无）",
+                exchanges=exchanges_text,
+            )
+            try:
+                new_summary = await self.role_llm.chat(
+                    [Message("user", prompt)],
+                    system="你是一个精炼摘要助手。",
+                    max_tokens=512,
+                    temperature=0.3,
+                )
+                dm.compressed_summary = new_summary.strip()
+                dm.clear_exchanges()
+                compressed += 1
+            except Exception:
+                pass
+        return compressed
 
     # ---------- 存档 ----------
     def save(self, path: str | Path) -> None:
