@@ -103,9 +103,76 @@ def test_audience_decline(client):
     assert body["granted"] is False
 
 
-def test_save_endpoint(client, tmp_path):
-    save_path = tmp_path / "test_save.json"
-    r = client.post("/save", data={"path": str(save_path)})
+def test_save_endpoint(client):
+    """存档到槽位1。"""
+    r = client.post("/save", data={"slot": 1})
     assert r.status_code == 200
     assert r.json()["ok"] is True
-    assert save_path.exists()
+    from pathlib import Path
+    assert Path("saves/slot_1/state.json").exists()
+
+
+def test_new_game_endpoint(client):
+    """新游戏重置状态。"""
+    r = client.post("/new_game")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert "崇祯" in data["era"]
+
+
+def test_list_saves(client):
+    """列出存档槽位。"""
+    # 先存一个档
+    client.post("/save", data={"slot": 2})
+    r = client.get("/saves")
+    assert r.status_code == 200
+    slots = r.json()["slots"]
+    assert len(slots) == 3
+    slot2 = [s for s in slots if s["slot"] == 2]
+    assert len(slot2) == 1
+    assert slot2[0]["exists"] is True
+
+
+def test_load_from_slot(client):
+    """从槽位读档。"""
+    client.post("/save", data={"slot": 3})
+    r = client.post("/load", data={"slot": 3})
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+
+def test_load_empty_slot(client):
+    """读空槽位返回 404。"""
+    r = client.post("/load", data={"slot": 99})
+    assert r.status_code == 404
+
+
+def test_dialogue_records_exchanges(client):
+    """对话后 agent 应有对话记录。"""
+    # 先推进一回合确保有 active agent
+    r = client.post("/next_turn", data={"edict": "test"})
+    assert r.status_code == 200
+
+    # 找一个 active agent 对话
+    state = client.get("/state").json()
+    agents = state.get("active_agents", [])
+    if not agents:
+        return  # 无 agent 则跳过
+    agent_id = agents[0]["id"]
+
+    r = client.post(f"/dialogue/{agent_id}", data={"message": "你好"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["public"] != ""
+
+    # 存档后验证对话记录存在
+    client.post("/save", data={"slot": 1})
+    import json
+    from pathlib import Path
+    saved = json.loads(Path("saves/slot_1/state.json").read_text(encoding="utf-8"))
+    roster = saved.get("roster", {}).get("instances", {})
+    if agent_id in roster:
+        dm = roster[agent_id].get("dialogue_memory", {})
+        assert len(dm.get("exchanges", [])) >= 2  # player + agent
