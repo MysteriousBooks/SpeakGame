@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"ls -la D:/project/speakGame/ 2>&1 | head -40; echo \\\"---OMC PLANS---\\\"; ls -la D:/project/speakGame/.omc/plans/ 2>&1; echo \\\"---DOCS---\\\"; ls -la D:/project/speakGame/docs/ 2>&1; echo \\\"--...",
-  "error": "Exit code 2\ntotal 52\ndrwxr-xr-x 1 jimCao 197121 0 Jun 18 08:33 ./\ndrwxr-xr-x 1 jimCao 197121 0 Jun 17 08:57 ../\ndrwxr-xr-x 1 jimCao 197121 0 Jun 17 15:27 .claude/\ndrwxr-xr-x 1 jimCao 197121 0 Jun 18 08:39 .codegraph/\ndrwxr-xr-x 1 jimCao 197121 0 Jun 18 08:38 .git/\ndrwxr-xr-x 1 jimCao 197121 0 Jun 17 16:50 .idea/\ndrwxr-xr-x 1 jimCao 197121 0 Jun 17 16:44 .omc/\ndrwxr-xr-x 1 jimCao 197121 0 Jun 17 14:43 .pytest_cache/\ndrwxr-xr-x 1 jimCao 197121 0 Jun 17 14:38 .venv/\n---OMC PLANS---\nls: cannot acces...",
-  "timestamp": "2026-06-18T00:39:40.193Z",
-  "retry_count": 1
-}
