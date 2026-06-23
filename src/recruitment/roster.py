@@ -115,6 +115,29 @@ class Roster:
         inst = self.instances.get(persona_id)
         return inst.status if inst else None
 
+    def get_talent_pool(self) -> list[dict]:
+        """返回人才库列表：available 历史人物 + dismissed 官员。"""
+        pool = []
+        for inst in self.instances.values():
+            if inst.status in (AVAILABLE, DISMISSED):
+                pool.append({
+                    "id": inst.persona.id,
+                    "name": inst.persona.name,
+                    "gender": inst.persona.gender,
+                    "skills": list(inst.persona.skills),
+                    "weaknesses": list(inst.persona.weaknesses),
+                    "status": inst.status,
+                    "position": inst.persona.position,
+                })
+        return pool
+
+    def find_by_name(self, name: str) -> AgentInstance | None:
+        """按姓名查找角色实例（用于编排解析任免指令时定位目标）。"""
+        for inst in self.instances.values():
+            if inst.persona.name == name:
+                return inst
+        return None
+
     # ---------- 状态转换 ----------
     def make_agent(self, persona_id: str, llm: LLMProvider, era: str) -> BaseAgent:
         """用该角色已存的两层记忆构造可对话 BaseAgent。"""
