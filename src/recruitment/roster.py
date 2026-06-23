@@ -132,7 +132,8 @@ class Roster:
         return pool
 
     def find_by_name(self, name: str) -> AgentInstance | None:
-        """按姓名查找角色实例（用于编排解析任免指令时定位目标）。"""
+        """按姓名查找角色实例（用于编排解析任免指令时定位目标）。
+        返回第一个匹配项；历史人物姓名唯一，重名场景极少。"""
         for inst in self.instances.values():
             if inst.persona.name == name:
                 return inst

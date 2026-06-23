@@ -159,3 +159,51 @@ def test_add_fictional_duplicate_id_raises():
     persona = PersonaCard(id="yuan", name="重名", born_year=1600, historical_death_year=1650)
     with pytest.raises(ValueError):
         r.add_fictional(persona, MockProvider(), era="崇祯1年1月")
+
+
+# ---------- 人才库 ----------
+
+
+def test_get_talent_pool_includes_available_and_dismissed():
+    r = make_roster()
+    # 初始：袁崇焕 available
+    pool = r.get_talent_pool()
+    ids = {p["id"] for p in pool}
+    assert "yuan" in ids
+    assert "later" in ids
+    # 招募后 dismiss
+    r.recruit("yuan", MockProvider(), era="崇祯1年1月")
+    r.dismiss("yuan")
+    pool2 = r.get_talent_pool()
+    assert any(p["id"] == "yuan" and p["status"] == "dismissed" for p in pool2)
+
+
+def test_talent_pool_has_gender_and_weaknesses():
+    r = make_roster()
+    pool = r.get_talent_pool()
+    for p in pool:
+        assert "gender" in p
+        assert "weaknesses" in p
+
+
+# ---------- find_by_name ----------
+
+
+def test_find_by_name_finds_active():
+    r = make_roster()
+    r.recruit("yuan", MockProvider(), era="崇祯1年1月")
+    inst = r.find_by_name("袁崇焕")
+    assert inst is not None
+    assert inst.persona.id == "yuan"
+
+
+def test_find_by_name_returns_none_for_missing():
+    r = make_roster()
+    assert r.find_by_name("不存在的人") is None
+
+
+def test_find_by_name_finds_available():
+    r = make_roster()
+    inst = r.find_by_name("晚生者")
+    assert inst is not None
+    assert inst.status == AVAILABLE
