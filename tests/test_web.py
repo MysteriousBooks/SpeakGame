@@ -174,7 +174,7 @@ def test_load_empty_slot(client):
 def test_dialogue_records_exchanges(client):
     """对话后 agent 应有对话记录。"""
     # 先推进一回合确保有 active agent
-    r = client.post("/next_turn", data={"edict": "test"})
+    r = client.post("/next_turn", data={"edict": "test", "action": "execute"})
     assert r.status_code == 200
 
     # 找一个 active agent 对话
