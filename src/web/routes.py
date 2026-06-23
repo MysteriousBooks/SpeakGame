@@ -49,7 +49,18 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
         snap["exam_pending"] = bool(getattr(engine, "_exam_gongshi", None))
         snap["talent_pool_notification"] = getattr(engine, "talent_pool_notification", None)
         engine.talent_pool_notification = None  # 读取后清除
+        snap["court_active"] = engine.get_court_session_active()
+        snap["pending_edicts"] = list(engine.pending_edicts)
         return JSONResponse(snap)
+
+    @app.post("/pending_edicts")
+    async def save_pending_edicts(edicts: str = Form("")) -> JSONResponse:
+        """保存待颁诏书列表（刷新页面后恢复）。"""
+        if edicts.strip():
+            engine.pending_edicts = [e.strip() for e in edicts.split("\n") if e.strip()]
+        else:
+            engine.pending_edicts = []
+        return JSONResponse({"ok": True})
 
     @app.get("/recruit")
     async def recruit_pool() -> JSONResponse:

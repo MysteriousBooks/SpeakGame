@@ -92,6 +92,7 @@ class GameEngine:
         self.role_llm = role_llm
         self.turn_history: list[dict] = []  # 历史回合摘要（服务端持久，刷新页面可回看）
         self.talent_pool_notification: str | None = None  # 科举流入通知
+        self.pending_edicts: list[str] = []  # 待颁诏书（刷新页面保留）
         self._setup_initial_court()
         self.events.trigger_initial()
 
@@ -203,6 +204,7 @@ class GameEngine:
                 for a in self.roster.active_agents()
             ],
             "history": list(self.turn_history),
+            "pending_edicts": list(self.pending_edicts),
         }
 
     def situation_text(self) -> str:
