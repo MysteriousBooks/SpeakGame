@@ -24,7 +24,28 @@ from src.events.event_engine import EventEngine
 from src.finance.economy import FinanceParams, apply_finance_delta, settle
 from src.llm.provider import LLMProvider, Message
 from src.recruitment.roster import Roster
+from src.recruitment.positions import PositionManager
 
+
+
+@dataclass
+class ExtractedSuggestion:
+    """从对话中提取的一条建议。"""
+    type: str  # "policy" | "appoint" | "dismiss"
+    content: str  # 建议的文本内容
+    source_agent_id: str
+    source_agent_name: str
+    # 人事任免相关
+    target_person_name: str | None = None
+    target_position_name: str | None = None
+    reason: str = ""
+
+
+@dataclass
+class ExtractionResult:
+    """LLM 从对话中提取的所有建议。"""
+    policy_suggestions: list[ExtractedSuggestion] = field(default_factory=list)
+    personnel_suggestions: list[ExtractedSuggestion] = field(default_factory=list)
 
 
 @dataclass
@@ -61,6 +82,7 @@ class GameEngine:
         self.state = WorldState.initial(config)
         self.finance = FinanceParams.from_config(config)
         self.roster = Roster(config)
+        self.positions = PositionManager()
         self.tasks = TaskSystem()
         self.audience = AudienceQueue()
         self.events = EventEngine(config)
@@ -68,6 +90,7 @@ class GameEngine:
         self.historian = Historian(historian_llm, config=config)
         self.role_llm = role_llm
         self.turn_history: list[dict] = []  # 历史回合摘要（服务端持久，刷新页面可回看）
+        self.talent_pool_notification: str | None = None  # 科举流入通知
         self._setup_initial_court()
         self.events.trigger_initial()
 
@@ -82,6 +105,78 @@ class GameEngine:
         for inst in list(self.roster.instances.values()):
             if inst.persona.recruitment_condition == "开局在朝":
                 self.roster.recruit(inst.persona.id, self.role_llm, era)
+        # 开局在朝官员占用对应职务
+        for inst in self.roster.active_instances():
+            if inst.persona.position:
+                pos = self.positions.get_by_name(inst.persona.position)
+                if pos is not None:
+                    try:
+                        self.positions.occupy(pos.id, inst.persona.id)
+                    except ValueError:
+                        pass
+
+    # ---------- 吏部管理 ----------
+    def appoint_official(self, persona_id: str, position_id: str) -> dict:
+        """从人才库任命官员到指定职务。"""
+        era = self.state.era_label()
+        inst = self.roster.get(persona_id)
+        if inst is None:
+            return {"ok": False, "error": f"角色 {persona_id} 不存在"}
+        if inst.status not in ("available", "dismissed"):
+            return {"ok": False, "error": f"{inst.persona.name} 当前状态不可任命"}
+        pos = self.positions.get_by_id(position_id)
+        if pos is None:
+            return {"ok": False, "error": f"职务 {position_id} 不存在"}
+        if pos.occupied_by is not None:
+            return {"ok": False, "error": f"职务 {pos.name} 已被占用"}
+        if inst.status == "dismissed":
+            self.roster.reinstate(persona_id, self.role_llm, era)
+        else:
+            self.roster.recruit(persona_id, self.role_llm, era)
+        self.positions.occupy(position_id, persona_id)
+        inst.persona.position = pos.name
+        return {"ok": True, "name": inst.persona.name, "position": pos.name}
+
+    def dismiss_official(self, persona_id: str) -> dict:
+        """卸任在朝官员。"""
+        inst = self.roster.get(persona_id)
+        if inst is None:
+            return {"ok": False, "error": f"角色 {persona_id} 不存在"}
+        if inst.status != "active":
+            return {"ok": False, "error": f"{inst.persona.name} 不在朝"}
+        self.positions.release_by_persona(persona_id)
+        self.roster.dismiss(persona_id)
+        return {"ok": True, "name": inst.persona.name}
+
+    def create_position(self, name: str, rank: str, scope: str) -> dict:
+        """创建自定义职务。"""
+        try:
+            pos = self.positions.create(name, rank, scope)
+            return {"ok": True, "position": pos.to_dict()}
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+
+    def get_vacant_positions(self) -> list[dict]:
+        """返回所有空缺职务列表。"""
+        return [p.to_dict() for p in self.positions.get_vacant()]
+
+    def get_position_management(self) -> dict:
+        """返回吏部面板全量数据。"""
+        active_officials = [
+            {
+                "id": a.id,
+                "name": a.name,
+                "position": a.persona.position,
+                "gender": a.persona.gender,
+            }
+            for a in self.roster.active_agents()
+        ]
+        return {
+            "active_officials": active_officials,
+            "talent_pool": self.roster.get_talent_pool(),
+            "vacant_positions": [p.to_dict() for p in self.positions.get_vacant()],
+            "all_positions": [p.to_dict() for p in self.positions.get_all()],
+        }
 
     # ---------- 状态快照 ----------
     def state_snapshot(self) -> dict:
@@ -395,6 +490,106 @@ class GameEngine:
             # 默认拒绝（不 force）；玩家强行则由编排标记，MVP 不自动 force
             transfer_treasury_to_inner(self.state.values, amount, force=False)
 
+    EXTRACT_EDICTS_PROMPT = (
+        "你是一个明朝朝廷诏书建议提取助手。分析以下皇帝与大臣的对话记录，"
+        "提取出大臣提出的政策建议和人事任免建议。\n\n"
+        "政策建议：大臣提出的治国方略、财政调整、军事行动、赈灾等具体施政建议。\n"
+        "人事任免：大臣举荐某人担任某职位、或弹劾某人请求罢免。\n\n"
+        "注意：\n"
+        "- 只提取明确提出的建议，不要臆测\n"
+        "- 忽略寒暄、客套话、无关话题\n"
+        "- 人事任免必须包含具体的人名和职位\n\n"
+        "对话记录：\n{dialogues}\n\n"
+        "请以 JSON 格式输出提取结果："
+    )
+
+    EXTRACT_SCHEMA: dict = {
+        "type": "object",
+        "properties": {
+            "policy_suggestions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "content": {"type": "string"},
+                        "source_agent_id": {"type": "string"},
+                        "source_agent_name": {"type": "string"},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["content", "source_agent_id", "source_agent_name"],
+                },
+            },
+            "personnel_suggestions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "type": {"type": "string", "enum": ["appoint", "dismiss"]},
+                        "content": {"type": "string"},
+                        "source_agent_id": {"type": "string"},
+                        "source_agent_name": {"type": "string"},
+                        "target_person_name": {"type": "string"},
+                        "target_position_name": {"type": "string"},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["type", "content", "source_agent_id", "source_agent_name"],
+                },
+            },
+        },
+        "required": ["policy_suggestions", "personnel_suggestions"],
+    }
+
+    async def extract_edicts_from_dialogues(self) -> ExtractionResult:
+        """扫描当前回合所有 active agent 的对话记录，用 LLM 提取诏书建议。"""
+        current_turn = self.state.current_month_index()
+        dialogues: list[str] = []
+        for inst in self.roster.instances.values():
+            if inst.status != "active":
+                continue
+            # 只取当前回合的对话
+            turn_exchanges = [e for e in inst.dialogue_memory.exchanges if e.turn == current_turn]
+            if not turn_exchanges:
+                continue
+            for e in turn_exchanges:
+                role = "帝" if e.role == "player" else inst.persona.name
+                dialogues.append(f"{role}：{e.content}")
+        if not dialogues:
+            return ExtractionResult()
+
+        dialogues_text = "\n".join(dialogues)
+        prompt = self.EXTRACT_EDICTS_PROMPT.format(dialogues=dialogues_text)
+        try:
+            out = await self.role_llm.chat_json(
+                [Message("user", prompt)],
+                schema=self.EXTRACT_SCHEMA,
+                system="你是一个明朝朝廷诏书建议提取助手。",
+                max_retries=1,
+            )
+        except Exception:
+            return ExtractionResult()
+
+        policy = [
+            ExtractedSuggestion(
+                type="policy", content=s["content"],
+                source_agent_id=s["source_agent_id"],
+                source_agent_name=s["source_agent_name"],
+                reason=s.get("reason", ""),
+            )
+            for s in out.get("policy_suggestions", [])
+        ]
+        personnel = [
+            ExtractedSuggestion(
+                type=s.get("type", "appoint"), content=s["content"],
+                source_agent_id=s["source_agent_id"],
+                source_agent_name=s["source_agent_name"],
+                target_person_name=s.get("target_person_name"),
+                target_position_name=s.get("target_position_name"),
+                reason=s.get("reason", ""),
+            )
+            for s in out.get("personnel_suggestions", [])
+        ]
+        return ExtractionResult(policy_suggestions=policy, personnel_suggestions=personnel)
+
     DIALOGUE_COMPRESS_PROMPT = (
         "你是一个精炼对话摘要的助手。请将以下皇帝与大臣的对话记录精炼为一段摘要（100-200字），"
         "保留关键信息：讨论的话题、大臣的立场、皇帝的决策、任何承诺或警告。\n\n"
@@ -446,6 +641,7 @@ class GameEngine:
                 "zonglu_reform": self.finance.zonglu_reform,
             },
             "roster": self.roster.to_dict(),
+            "positions": self.positions.to_dict(),
             "tasks": self.tasks.to_dict(),
             "audience": self.audience.to_dict(),
             "events": self.events.to_dict(),
@@ -482,6 +678,9 @@ class GameEngine:
         eng.tasks = TaskSystem.from_dict(data["tasks"])
         eng.audience = AudienceQueue.from_dict(data["audience"])
         eng.events = EventEngine.from_dict(data["events"], config)
+        # 恢复职务状态（旧存档兼容）
+        if "positions" in data:
+            eng.positions = PositionManager.from_dict(data["positions"])
         # roster 的 agent 对象需重建（llm 注入）
         era = eng.state.era_label()
         for inst_id, inst_data in data["roster"].get("instances", {}).items():
@@ -497,6 +696,7 @@ class GameEngine:
         self.state = WorldState.initial(cfg)
         self.finance = FinanceParams.from_config(cfg)
         self.roster = Roster(cfg)
+        self.positions = PositionManager()
         self.tasks = TaskSystem()
         self.audience = AudienceQueue()
         self.events = EventEngine(cfg)
@@ -567,6 +767,9 @@ class GameEngine:
             persona.dialogue_memory = DialogueMemory.from_dict(saved_inst.get("dialogue_memory", {}))
             if persona.status == "active":
                 persona.agent = self.roster.make_agent(inst_id, self.role_llm, era)
+        # 恢复职务状态（旧存档兼容）
+        if "positions" in data:
+            self.positions = PositionManager.from_dict(data["positions"])
         # 恢复 turn_history
         hist_path = slot_dir / "history.json"
         if hist_path.exists():
