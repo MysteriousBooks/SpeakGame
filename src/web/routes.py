@@ -47,6 +47,8 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
         exam_sys = ExamSystem(engine.config)
         snap["exam_available"] = exam_sys.is_exam_year(year)
         snap["exam_pending"] = bool(getattr(engine, "_exam_gongshi", None))
+        snap["talent_pool_notification"] = getattr(engine, "talent_pool_notification", None)
+        engine.talent_pool_notification = None  # 读取后清除
         return JSONResponse(snap)
 
     @app.get("/recruit")
@@ -115,27 +117,60 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
         })
 
     @app.post("/next_turn")
-    async def next_turn(edict: str = Form("")) -> StreamingResponse:
-        """下一回合：启动早朝第1轮，返回百官发言。诏书暂存，等早朝结束后执行。"""
-        edict_text = edict.strip() if edict.strip() else ""
-        # 暂存诏书，早朝结束后执行
-        engine._pending_edict = edict_text
-        court_speeches: list[dict] = []
-        try:
-            court_speeches = await engine.start_court_phase()
-        except Exception:
-            pass  # 早朝失败则跳过
+    async def next_turn(action: str = Form("extract"), edict: str = Form("")):
+        """下一回合两步流程：
+        - action=extract（第一步）：扫描对话提取建议，返回提取结果
+        - action=execute（第二步）：执行推演，返回 SSE 流
+        """
+        if action == "extract":
+            result = await engine.extract_edicts_from_dialogues()
+            return JSONResponse({
+                "ok": True,
+                "policy_suggestions": [
+                    {"content": s.content, "source_agent_name": s.source_agent_name, "reason": s.reason}
+                    for s in result.policy_suggestions
+                ],
+                "personnel_suggestions": [
+                    {
+                        "type": s.type, "content": s.content,
+                        "source_agent_name": s.source_agent_name,
+                        "target_person_name": s.target_person_name,
+                        "target_position_name": s.target_position_name,
+                        "reason": s.reason,
+                    }
+                    for s in result.personnel_suggestions
+                ],
+            })
+
+        # action == "execute"：执行推演
+        edict_text = edict.strip() if edict.strip() else "（本回合无诏书，朝政如常）"
+        summary = await engine.run_turn(edict_text)
 
         async def event_stream():
-            if court_speeches:
-                yield _sse("court_round", {
-                    "speeches": court_speeches,
-                    "round": 1,
-                    "can_interject": engine.get_court_session_active(),
-                })
-            else:
-                # 无早朝（无官员），直接执行诏书
-                yield _sse("court_skip", {"reason": "无官员在朝"})
+            yield _sse("narrative", summary.narrative)
+            await asyncio.sleep(0)
+            if summary.execution_public:
+                yield _sse("execution", summary.execution_public)
+            yield _sse(
+                "delta",
+                {"applied": summary.delta_applied, "clipped": summary.delta_clipped},
+            )
+            yield _sse("finance", summary.finance_settlement)
+            if summary.new_events_triggered:
+                yield _sse("new_events", summary.new_events_triggered)
+            if summary.events_resolved:
+                yield _sse("resolved", summary.events_resolved)
+            if summary.fail_delta:
+                yield _sse("fail", summary.fail_delta)
+            if summary.audience_queue:
+                yield _sse("audience", summary.audience_queue)
+            if summary.premonitions:
+                yield _sse("premonitions", summary.premonitions)
+            if summary.task:
+                yield _sse("task", summary.task)
+            if summary.appointment_results:
+                yield _sse("appointments", summary.appointment_results)
+            yield _sse("era", summary.era)
             yield "data: [DONE]\n\n"
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
@@ -151,6 +186,28 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
             "speeches": round_speeches,
             "can_interject": still_active,
         })
+
+    @app.post("/court/start")
+    async def court_start() -> StreamingResponse:
+        """推演完成后启动早朝：百官对推演结果议政。"""
+        court_speeches: list[dict] = []
+        try:
+            court_speeches = await engine.start_court_phase()
+        except Exception:
+            pass
+
+        async def event_stream():
+            if court_speeches:
+                yield _sse("court_round", {
+                    "speeches": court_speeches,
+                    "round": 1,
+                    "can_interject": engine.get_court_session_active(),
+                })
+            else:
+                yield _sse("court_skip", {"reason": "无官员在朝"})
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     @app.post("/court/end")
     async def court_end() -> StreamingResponse:
@@ -345,6 +402,7 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
             if not engine._exam_gongshi:
                 engine._exam_gongshi = None
                 engine._exam_rankings = {}
+                engine.talent_pool_notification = f"崇祯{year}年殿试已毕，新科进士已流入人才库，可前往吏部任命。"
             return JSONResponse({
                 "ok": True,
                 "name": agent.name,
@@ -387,6 +445,41 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
             "ok": True,
             "appointed": [{"name": a.name, "id": a.id} for a in new_agents],
         })
+
+    # ---- 吏部管理 ----
+    @app.get("/positions")
+    async def get_positions() -> JSONResponse:
+        """获取所有职务（含占用状态）。"""
+        return JSONResponse({
+            "all_positions": [p.to_dict() for p in engine.positions.get_all()],
+            "vacant_positions": [p.to_dict() for p in engine.positions.get_vacant()],
+        })
+
+    @app.get("/talent_pool")
+    async def talent_pool() -> JSONResponse:
+        """获取人才库列表。"""
+        return JSONResponse({"talent_pool": engine.roster.get_talent_pool()})
+
+    @app.post("/appoint")
+    async def appoint_official(persona_id: str = Form(...), position_id: str = Form(...)) -> JSONResponse:
+        """任命官员。"""
+        result = engine.appoint_official(persona_id, position_id)
+        status = 200 if result["ok"] else 400
+        return JSONResponse(result, status_code=status)
+
+    @app.post("/dismiss/{persona_id}")
+    async def dismiss_official(persona_id: str) -> JSONResponse:
+        """卸任官员。"""
+        result = engine.dismiss_official(persona_id)
+        status = 200 if result["ok"] else 400
+        return JSONResponse(result, status_code=status)
+
+    @app.post("/positions/create")
+    async def create_position(name: str = Form(...), rank: str = Form(...), scope: str = Form(...)) -> JSONResponse:
+        """新建职务。"""
+        result = engine.create_position(name, rank, scope)
+        status = 200 if result["ok"] else 400
+        return JSONResponse(result, status_code=status)
 
 
 def _sse(event_type: str, data) -> str:
