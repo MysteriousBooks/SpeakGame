@@ -28,7 +28,7 @@ ORCHESTRATOR_SCHEMA: dict = {
     "properties": {
         "action": {
             "type": "string",
-            "enum": ["execute", "dismiss", "execute_death", "finance_transfer", "court_only", "noop"],
+            "enum": ["execute", "dismiss", "execute_death", "finance_transfer", "court_only", "noop", "appoint"],
         },
         "dispatch_targets": {"type": "array", "items": {"type": "string"}},
         "visits": {
@@ -70,6 +70,18 @@ ORCHESTRATOR_SCHEMA: dict = {
                 "detail": {"type": "string"},
             },
         },
+        "appointments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "person_name": {"type": "string"},
+                    "position_name": {"type": "string"},
+                    "action": {"type": "string", "enum": ["appoint", "dismiss"]},
+                },
+                "required": ["person_name", "action"],
+            },
+        },
         "reason": {"type": "string"},
     },
     "required": ["action", "dispatch_targets"],
@@ -88,6 +100,7 @@ class OrchestratorPlan:
     finance_action: dict | None = None
     target: str | None = None  # 处置对象（赐死/免职）
     reason: str = ""
+    appointments: list[dict] = field(default_factory=list)
 
     @property
     def is_dismiss(self) -> bool:
@@ -100,6 +113,10 @@ class OrchestratorPlan:
     @property
     def is_finance_transfer(self) -> bool:
         return self.action == "finance_transfer"
+
+    @property
+    def is_appoint(self) -> bool:
+        return self.action == "appoint"
 
     @classmethod
     def from_dict(cls, d: dict) -> "OrchestratorPlan":
@@ -114,6 +131,7 @@ class OrchestratorPlan:
             finance_action=fin if isinstance(fin, dict) and fin else None,
             target=d.get("target") or (task.get("target_agent") if isinstance(task, dict) else None),
             reason=d.get("reason", ""),
+            appointments=list(d.get("appointments", [])),
         )
 
 
