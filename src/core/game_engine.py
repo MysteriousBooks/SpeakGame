@@ -65,6 +65,7 @@ class TurnSummary:
     task: dict | None = None
     execution_public: list[dict] = field(default_factory=dict)  # [{agent_id, name, public}]
     court_speeches: list[dict] = field(default_factory=list)    # 早朝发言 [{speaker_id, speaker_name, public}]
+    appointment_results: list[dict] = field(default_factory=list)  # 任免执行结果
 
 
 class GameEngine:
@@ -356,6 +357,34 @@ class GameEngine:
                 pass
         if plan.is_finance_transfer and plan.finance_action:
             self._apply_finance_transfer(plan.finance_action)
+
+        # 2.5 执行任免（编排解析出的 appoint/dismiss）
+        appointment_results: list[dict] = []
+        if plan.is_appoint and plan.appointments:
+            for apt in plan.appointments:
+                if apt["action"] == "appoint":
+                    target = self.roster.find_by_name(apt["person_name"])
+                    if target is None:
+                        appointment_results.append({"action": "appoint", "person": apt["person_name"], "ok": False, "error": "未找到目标"})
+                        continue
+                    # 查找目标职位
+                    pos = self.positions.get_by_name(apt.get("position_name", ""))
+                    if pos is None:
+                        appointment_results.append({"action": "appoint", "person": apt["person_name"], "ok": False, "error": f"职位 {apt.get('position_name')} 不存在"})
+                        continue
+                    result = self.appoint_official(target.persona.id, pos.id)
+                    appointment_results.append({"action": "appoint", "person": apt["person_name"], "position": pos.name, "ok": result["ok"], "error": result.get("error")})
+                elif apt["action"] == "dismiss":
+                    target = self.roster.find_by_name(apt["person_name"])
+                    if target is None:
+                        appointment_results.append({"action": "dismiss", "person": apt["person_name"], "ok": False, "error": "未找到目标"})
+                        continue
+                    try:
+                        self.dismiss_official(target.persona.id)
+                        appointment_results.append({"action": "dismiss", "person": apt["person_name"], "ok": True})
+                    except ValueError as e:
+                        appointment_results.append({"action": "dismiss", "person": apt["person_name"], "ok": False, "error": str(e)})
+
         if plan.task:
             t = self.tasks.create(
                 plan.task.get("target_agent", ""),
@@ -455,6 +484,7 @@ class GameEngine:
             task=plan_task_snapshot,
             execution_public=execution_public,
             court_speeches=court_speeches_data,
+            appointment_results=appointment_results,
         )
         # 服务端持久化回合摘要（刷新页面可回看，最多保留 30 回合）
         self.turn_history.append(
@@ -469,6 +499,7 @@ class GameEngine:
                 "fail_delta": dict(summary.fail_delta),
                 "audience_queue": list(summary.audience_queue),
                 "court_speeches": list(summary.court_speeches),
+                "appointment_results": list(summary.appointment_results),
             }
         )
         self.turn_history = self.turn_history[-30:]
