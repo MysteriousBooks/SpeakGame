@@ -379,11 +379,8 @@ class GameEngine:
                     if target is None:
                         appointment_results.append({"action": "dismiss", "person": apt["person_name"], "ok": False, "error": "未找到目标"})
                         continue
-                    try:
-                        self.dismiss_official(target.persona.id)
-                        appointment_results.append({"action": "dismiss", "person": apt["person_name"], "ok": True})
-                    except ValueError as e:
-                        appointment_results.append({"action": "dismiss", "person": apt["person_name"], "ok": False, "error": str(e)})
+                    result = self.dismiss_official(target.persona.id)
+                    appointment_results.append({"action": "dismiss", "person": apt["person_name"], "ok": result["ok"], "error": result.get("error")})
 
         if plan.task:
             t = self.tasks.create(
