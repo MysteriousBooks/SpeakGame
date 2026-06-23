@@ -237,6 +237,8 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
                 yield _sse("premonitions", summary.premonitions)
             if summary.task:
                 yield _sse("task", summary.task)
+            if summary.appointment_results:
+                yield _sse("appointments", summary.appointment_results)
             yield _sse("era", summary.era)
             yield "data: [DONE]\n\n"
 
@@ -272,6 +274,8 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
                 yield _sse("premonitions", summary.premonitions)
             if summary.task:
                 yield _sse("task", summary.task)
+            if summary.appointment_results:
+                yield _sse("appointments", summary.appointment_results)
             yield _sse("era", summary.era)
             yield "data: [DONE]\n\n"
 
@@ -296,6 +300,7 @@ def register(app: FastAPI, engine: GameEngine, templates: Jinja2Templates) -> No
                 "task": summary.task,
                 "execution_public": summary.execution_public,
                 "court_speeches": summary.court_speeches,
+                "appointment_results": summary.appointment_results,
             }
         )
 

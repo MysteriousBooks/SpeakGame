@@ -734,7 +734,7 @@
                 courtActive = evt.data.can_interject;
               } else if (evt.type === 'court_skip') {
                 courtActive = false;
-                turn.innerHTML += '<div class=”meta” style=”color:var(--muted)”>无官员在朝</div>';
+                turn.innerHTML += '<div class="meta" style="color:var(--muted)">无官员在朝</div>';
                 return;
               }
             } catch(e) {}
@@ -749,7 +749,7 @@
         }
         document.getElementById('status').textContent = courtActive ? '早朝进行中，可插话或结束早朝' : '早朝结束';
       } catch (err) {
-        turn.innerHTML += '<div class=”meta” style=”color:var(--danger)”>早朝失败：' + err + '</div>';
+        turn.innerHTML += '<div class=”meta” style=”color:var(--danger)">早朝失败：' + err + '</div>';
       }
     }
 
@@ -776,7 +776,7 @@
 
       const turn = document.createElement('div'); turn.className = 'turn'; turn.id = 'current-turn';
       document.getElementById('dialog').prepend(turn);
-      turn.innerHTML = '<div class=”meta”>推演中…</div>';
+      turn.innerHTML = '<div class=”meta">推演中…</div>';
 
       try {
         const fd = new FormData();
@@ -819,7 +819,7 @@
         refreshState();
         await startPostCourt(turn);
       } catch (err) {
-        turn.innerHTML = '<div class=”narrative”>推演失败：' + err + '</div>';
+        turn.innerHTML = '<div class=”narrative">推演失败：' + err + '</div>';
       } finally {
         document.getElementById('sim-overlay').classList.remove('active');
         btn.disabled = false;
