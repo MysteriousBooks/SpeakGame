@@ -255,7 +255,7 @@
         <div id="pending-list"></div>
         <div style="display:flex;gap:0.5rem;margin-top:0.4rem">
           <button type="button" onclick="clearEdicts()" style="background:none;border:1px solid var(--muted);color:var(--muted);padding:0.2rem 0.6rem;cursor:pointer;font-size:0.8rem">清空</button>
-          <button type="button" id="submit-btn" onclick="nextTurn()" style="background:var(--accent);color:var(--bg);border:none;padding:0.3rem 1rem;font-size:0.9rem;cursor:pointer;letter-spacing:2px;margin-left:auto">下一回合 ▶</button>
+          <button type="button" id="submit-btn" onclick="onSubmitTurn()" style="background:var(--accent);color:var(--bg);border:none;padding:0.3rem 1rem;font-size:0.9rem;cursor:pointer;letter-spacing:2px;margin-left:auto">下一回合 ▶</button>
         </div>
       </div>
     </form>
@@ -706,32 +706,17 @@
     let courtActive = false;  // 当前是否在早朝中
     let lastDelta = {};       // 最近一回合的数值变化
 
-    async function executeTurn() {
-      document.getElementById('sim-overlay').classList.add('active');
-      const btn = document.getElementById('submit-btn');
-      btn.disabled = true;
+    // ---- 推演后早朝 ----
+    async function startPostCourt(turn) {
       document.getElementById('status').textContent = '早朝开始…';
 
-      // 合并待颁诏令
-      const edictText = pendingEdicts.length > 0
-        ? pendingEdicts.map((e, i) => `${i+1}. ${e}`).join('\n')
-        : '';
-      pendingEdicts = [];
-      renderPendingEdicts();
-
-      // 创建回合展示区域
-      const turn = document.createElement('div'); turn.className = 'turn'; turn.id = 'current-turn';
-      document.getElementById('dialog').prepend(turn);
-      turn.innerHTML = '<div class=”meta”>推演中…</div>';
-
       try {
-        const fd = new FormData();
-        if (edictText) fd.append('edict', edictText);
-        const resp = await fetch('/next_turn', { method: 'POST', body: fd });
+        const resp = await fetch('/court/start', { method: 'POST' });
         const reader = resp.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        let html = '';
+        let courtHtml = '';
+
         while (true) {
           const {done, value} = await reader.read();
           if (done) break;
@@ -745,25 +730,99 @@
             try {
               const evt = JSON.parse(payload);
               if (evt.type === 'court_round') {
-                html += renderCourtRound(evt.data);
+                courtHtml = renderCourtRound(evt.data);
                 courtActive = evt.data.can_interject;
               } else if (evt.type === 'court_skip') {
                 courtActive = false;
-                turn.innerHTML = '';
-                await runCourtEnd(turn, edictText);
+                turn.innerHTML += '<div class=”meta” style=”color:var(--muted)”>无官员在朝</div>';
                 return;
               }
             } catch(e) {}
           }
-          turn.innerHTML = html || '<div class=”meta”>推演中…</div>';
+          if (courtHtml) {
+            turn.innerHTML += courtHtml;
+          }
         }
-        turn.innerHTML = html;
-        await runCourtEnd(turn, edictText);
+
+        if (courtActive) {
+          showCourtInput(turn);
+        }
+        document.getElementById('status').textContent = courtActive ? '早朝进行中，可插话或结束早朝' : '早朝结束';
+      } catch (err) {
+        turn.innerHTML += '<div class=”meta” style=”color:var(--danger)”>早朝失败：' + err + '</div>';
+      }
+    }
+
+    function onSubmitTurn() {
+      if (pendingEdicts.length > 0) {
+        executeTurn();
+      } else {
+        nextTurn();
+      }
+    }
+
+    async function executeTurn() {
+      document.getElementById('sim-overlay').classList.add('active');
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      document.getElementById('status').textContent = '推演中…';
+
+      const edictText = pendingEdicts.length > 0
+        ? pendingEdicts.map((e, i) => `${i+1}. ${e}`).join('\n')
+        : '';
+      pendingEdicts = [];
+      renderPendingEdicts();
+      document.getElementById('submit-btn').textContent = '下一回合 ▶';
+
+      const turn = document.createElement('div'); turn.className = 'turn'; turn.id = 'current-turn';
+      document.getElementById('dialog').prepend(turn);
+      turn.innerHTML = '<div class=”meta”>推演中…</div>';
+
+      try {
+        const fd = new FormData();
+        fd.append('action', 'execute');
+        if (edictText) fd.append('edict', edictText);
+        const resp = await fetch('/next_turn', { method: 'POST', body: fd });
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let narrative = '', executionList = [], deltaApplied = {}, deltaClipped = {};
+        let newEvents = [], resolvedEvents = [], failDelta = {}, audienceList = [];
+        let appointmentResults = [];
+
+        while (true) {
+          const {done, value} = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, {stream: true});
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6).trim();
+            if (payload === '[DONE]') continue;
+            try {
+              const evt = JSON.parse(payload);
+              const t = evt.type, d = evt.data;
+              if (t === 'narrative') narrative = d || '';
+              else if (t === 'execution') executionList = d || [];
+              else if (t === 'delta') { deltaApplied = (d && d.applied) || {}; deltaClipped = (d && d.clipped) || {}; lastDelta = deltaApplied; }
+              else if (t === 'new_events') newEvents = d || [];
+              else if (t === 'resolved') resolvedEvents = d || [];
+              else if (t === 'fail') failDelta = d || {};
+              else if (t === 'audience') audienceList = d || [];
+              else if (t === 'appointments') appointmentResults = d || [];
+            } catch(e) {}
+          }
+        }
+
+        turn.innerHTML = renderTurnCard(edictText, '', narrative, executionList, deltaApplied, newEvents, resolvedEvents, failDelta, audienceList, appointmentResults);
+        refreshState();
+        await startPostCourt(turn);
       } catch (err) {
         turn.innerHTML = '<div class=”narrative”>推演失败：' + err + '</div>';
       } finally {
+        document.getElementById('sim-overlay').classList.remove('active');
         btn.disabled = false;
-        document.getElementById('status').textContent = courtActive ? '早朝进行中，可插话或结束早朝' : '可下诏、对话百官、招募、科举，然后点”下一回合”推进推演';
       }
     }
 
@@ -894,7 +953,7 @@
           }
         }
         // 统一渲染结构化卡片
-        const html = renderTurnCard(edictText, baseHtml, narrative, executionList, deltaApplied, newEvents, resolvedEvents, failDelta, audienceList);
+        const html = renderTurnCard(edictText, baseHtml, narrative, executionList, deltaApplied, newEvents, resolvedEvents, failDelta, audienceList, []);
         if (turn) turn.innerHTML = html;
         refreshState();
       } catch (err) {
@@ -906,7 +965,7 @@
       }
     }
 
-    function renderTurnCard(edictText, courtHtml, narrative, executionList, deltaApplied, newEvents, resolvedEvents, failDelta, audienceList) {
+    function renderTurnCard(edictText, courtHtml, narrative, executionList, deltaApplied, newEvents, resolvedEvents, failDelta, audienceList, appointmentResults) {
       let html = '';
 
       // 诏书章节
@@ -934,6 +993,23 @@
       if (executionList.length) {
         html += '<div class="turn-section"><div class="section-label">📋 执行奏报</div>';
         html += executionList.map(e => `<div class="meta">${e.name}奏：${e.public}</div>`).join('');
+        html += '</div>';
+      }
+
+      // 任免结果章节
+      if (appointmentResults && appointmentResults.length) {
+        html += '<div class="turn-section"><div class="section-label">👤 任免结果</div>';
+        html += appointmentResults.map(r => {
+          if (r.action === 'appoint') {
+            return r.ok
+              ? `<div class="meta" style="color:var(--good)">任命 ${r.person} 为 ${r.position}</div>`
+              : `<div class="meta" style="color:var(--danger)">任命 ${r.person} 失败：${r.error}</div>`;
+          } else {
+            return r.ok
+              ? `<div class="meta" style="color:var(--good)">罢免 ${r.person}</div>`
+              : `<div class="meta" style="color:var(--danger)">罢免 ${r.person} 失败：${r.error}</div>`;
+          }
+        }).join('');
         html += '</div>';
       }
 
@@ -1004,6 +1080,23 @@
           html += h.court_speeches.map(s =>
             `<div class="court-speech"><span class="speaker">${s.speaker_name}：</span>${s.public}</div>`
           ).join('');
+          html += '</div>';
+        }
+
+        // 任免结果
+        if (h.appointment_results && h.appointment_results.length) {
+          html += '<div class="turn-section"><div class="section-label">👤 任免结果</div>';
+          html += h.appointment_results.map(r => {
+            if (r.action === 'appoint') {
+              return r.ok
+                ? `<div class="meta" style="color:var(--good)">任命 ${r.person} 为 ${r.position}</div>`
+                : `<div class="meta" style="color:var(--danger)">任命 ${r.person} 失败：${r.error}</div>`;
+            } else {
+              return r.ok
+                ? `<div class="meta" style="color:var(--good)">罢免 ${r.person}</div>`
+                : `<div class="meta" style="color:var(--danger)">罢免 ${r.person} 失败：${r.error}</div>`;
+            }
+          }).join('');
           html += '</div>';
         }
 
