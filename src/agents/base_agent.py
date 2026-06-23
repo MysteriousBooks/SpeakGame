@@ -41,8 +41,10 @@ class PersonaCard:
     name: str = ""
     courtesy: str = ""
     position: str = ""
+    gender: str = ""
     faction: str = ""
     skills: list[str] = field(default_factory=list)
+    weaknesses: list[str] = field(default_factory=list)
     personality: str = ""
     relations: dict = field(default_factory=dict)
     # 系统元数据（不注入 agent 提示词）
@@ -59,8 +61,10 @@ class PersonaCard:
             name=d["name"],
             courtesy=d.get("courtesy", ""),
             position=d.get("position", ""),
+            gender=d.get("gender", ""),
             faction=d.get("faction", ""),
             skills=list(d.get("skills", [])),
+            weaknesses=list(d.get("weaknesses", [])),
             personality=d.get("personality", ""),
             relations=dict(d.get("relations", {})),
             historical_alignment=d.get("historical_alignment", ""),

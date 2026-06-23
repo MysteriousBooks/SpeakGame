@@ -6,6 +6,8 @@ figures:
     name: 袁崇焕
     courtesy: 元素
     position: 辽东巡抚
+    gender: 男
+    weaknesses: [刚愎自用, 轻敌]
     born_year: 1584
     historical_death_year: 1630
     death_cause:
@@ -22,6 +24,8 @@ figures:
     name: 孙传庭
     courtesy: 伯雅
     position: 陕西巡抚
+    gender: 男
+    weaknesses: [恃勇轻进, 刚愎]
     born_year: 1593
     historical_death_year: 1643
     death_cause:
@@ -38,6 +42,8 @@ figures:
     name: 洪承畴
     courtesy: 亨九
     position: 三边总督
+    gender: 男
+    weaknesses: [优柔寡断, 明哲保身]
     born_year: 1593
     historical_death_year: 1665
     death_cause:
@@ -54,6 +60,8 @@ figures:
     name: 卢象升
     courtesy: 建斗
     position: 大名知府
+    gender: 男
+    weaknesses: [有勇无谋, 轻进]
     born_year: 1600
     historical_death_year: 1639
     death_cause:
@@ -70,6 +78,8 @@ figures:
     name: 杨嗣昌
     courtesy: 文弱
     position: 兵部侍郎
+    gender: 男
+    weaknesses: [刚愎自用, 纸上谈兵]
     born_year: 1588
     historical_death_year: 1641
     death_cause:
@@ -86,6 +96,8 @@ figures:
     name: 温体仁
     courtesy: 元卿
     position: 礼部尚书
+    gender: 男
+    weaknesses: [阴柔专擅, 排挤同僚]
     born_year: 1573
     historical_death_year: 1639
     death_cause:
@@ -102,6 +114,8 @@ figures:
     name: 周延儒
     courtesy: 玉绳
     position: 内阁大学士
+    gender: 男
+    weaknesses: [贪墨, 结党营私]
     born_year: 1593
     historical_death_year: 1643
     death_cause:
@@ -118,6 +132,8 @@ figures:
     name: 王永光
     courtesy: 有孚
     position: 吏部尚书
+    gender: 男
+    weaknesses: [圆滑, 明哲保身]
     born_year: 1561
     historical_death_year: 1638
     death_cause:
@@ -134,6 +150,8 @@ figures:
     name: 乔允升
     courtesy: 吉甫
     position: 刑部尚书
+    gender: 男
+    weaknesses: [刻板, 不知变通]
     born_year: 1557
     historical_death_year: 1635
     death_cause:
@@ -150,6 +168,8 @@ figures:
     name: 刘遵宪
     courtesy: 可权
     position: 工部尚书
+    gender: 男
+    weaknesses: [过于谨慎, 效率低下]
     born_year: 1565
     historical_death_year: 1640
     death_cause:
@@ -166,6 +186,8 @@ figures:
     name: 魏忠贤
     courtesy: ""
     position: 司礼监掌印太监
+    gender: 男
+    weaknesses: [专权跋扈, 结党营私]
     born_year: 1568
     historical_death_year: 1628
     death_cause:

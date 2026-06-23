@@ -199,3 +199,58 @@ def test_dialogue_records_exchanges(client):
     if agent_id in roster:
         dm = roster[agent_id].get("dialogue_memory", {})
         assert len(dm.get("exchanges", [])) >= 2  # player + agent
+
+
+# ---- 吏部管理 ----
+
+def test_positions_endpoint(client):
+    r = client.get("/positions")
+    assert r.status_code == 200
+    data = r.json()
+    assert "all_positions" in data
+    assert "vacant_positions" in data
+    assert len(data["all_positions"]) > 0
+
+
+def test_talent_pool_endpoint(client):
+    r = client.get("/talent_pool")
+    assert r.status_code == 200
+    data = r.json()
+    assert "talent_pool" in data
+    assert len(data["talent_pool"]) > 0
+
+
+def test_appoint_endpoint(client):
+    """任命 available 角色到空缺职务。"""
+    pool = client.get("/talent_pool").json()["talent_pool"]
+    available = [p for p in pool if p["status"] == "available"]
+    assert len(available) > 0
+    vacant = client.get("/positions").json()["vacant_positions"]
+    assert len(vacant) > 0
+    r = client.post("/appoint", data={
+        "persona_id": available[0]["id"],
+        "position_id": vacant[0]["id"],
+    })
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+
+def test_dismiss_endpoint(client):
+    """卸任在朝官员。"""
+    pool = client.get("/talent_pool").json()["talent_pool"]
+    available = [p for p in pool if p["status"] == "available"]
+    vacant = client.get("/positions").json()["vacant_positions"]
+    client.post("/appoint", data={"persona_id": available[0]["id"], "position_id": vacant[0]["id"]})
+    r = client.post(f"/dismiss/{available[0]['id']}")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+
+def test_create_position_endpoint(client):
+    r = client.post("/positions/create", data={
+        "name": "东厂提督", "rank": "正四品", "scope": "掌东厂刑狱侦缉",
+    })
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    vacant = client.get("/positions").json()["vacant_positions"]
+    assert any(p["name"] == "东厂提督" for p in vacant)

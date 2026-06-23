@@ -22,3 +22,5 @@ saves/
 # 索引
 .codegraph/
 /.omc/
+/.superpowers/
+/.claude/

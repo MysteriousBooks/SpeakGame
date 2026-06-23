@@ -24,6 +24,8 @@ _ABILITIES = ["经世", "文章", "兵略", "理刑", "钱谷", "水利", "辞�
 _PROVINCES = ["顺天", "应天", "山东", "山西", "河南", "陕西", "浙江", "江西", "湖广", "福建", "四川"]
 _BACKGROUNDS = ["寒门苦读", "耕读世家", "落第再试", "边地寒微", "官学廪生", "乡绅子弟"]
 
+_WEAKNESSES = ["马虎", "贪墨", "刚愎", "怯懦", "刻板", "圆滑", "急躁", "懒散", "好色", "嗜酒"]
+
 # 可授官职（按名次分组）
 # 前三甲固定职位
 POSITIONS_TOP3 = {
@@ -157,10 +159,14 @@ def generate_jinshi_persona(
     if candidate.ability_tendency == "兵略":
         skills.append("军事")
     pos_name = position["name"] if position else rank_label
+    gender = random.choice(["男", "女"])
+    weaknesses = random.sample(_WEAKNESSES, k=random.randint(1, 2))
     return PersonaCard(
         id=f"jinshi_{candidate.id}",
         name=candidate.name,
         courtesy="",
+        gender=gender,
+        weaknesses=weaknesses,
         faction="新科进士",
         skills=skills,
         personality=personality,
